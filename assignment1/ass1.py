@@ -1,10 +1,12 @@
-from numpy import zeros, argmax, ndarray, meshgrid
+from numpy import zeros, argmax, ndarray, meshgrid, mean
+from numpy.random import uniform
 from pandas import DataFrame
 import matplotlib.pyplot as plt
 
 def basic_inventory_dp(T_dim:int, X_dim:int, A:list, P:list
-                       )->dict[str:tuple[ndarray, DataFrame], 
-                               str:tuple[ndarray, DataFrame]]:
+                       )->tuple[float,
+                                ndarray,DataFrame,
+                                ndarray, DataFrame]:
     
     DP = zeros((X_dim, T_dim)) # initialize with zeros 
     POLICY = zeros((X_dim,T_dim-1))
@@ -36,15 +38,16 @@ def basic_inventory_dp(T_dim:int, X_dim:int, A:list, P:list
             POLICY[x,t] = A[best_action]
 
     # Maximum expected revenue
-    print(DP[100,0])
+    print('Optimal expected revenue:', maxrev := DP[100,0])
 
     DP_frame = DataFrame(DP, columns = [f't={t}' for t in range(T_dim)]).to_csv('Part1matrix.csv')
     POLICY_frame = DataFrame(POLICY, columns = [f't={t}' for t in range(T_dim-1)]).to_csv('Part1policy.csv')
 
-    return {'dp_matrix':(DP, DP_frame),
-            'policy':(POLICY, POLICY_frame)}
+    return (maxrev,
+            DP, DP_frame,
+           POLICY, POLICY_frame)
 
-def plot_policy(Td:int, Xd:int, pol:ndarray)->None:
+def plot_policy(Td:int, Xd:int, pol:ndarray,show:bool = False)->None:
     X, Y = meshgrid(list(range(Td-1)),
                     list(range(Xd)))
     
@@ -54,7 +57,39 @@ def plot_policy(Td:int, Xd:int, pol:ndarray)->None:
     plt.ylabel('Remaining inventory (x)')
     plt.tight_layout()
     plt.savefig('optimal_policy_partB.png')
-    plt.show()
+    if show == True:
+        plt.show()
+    plt.close()
+    
+def simulate(Td:int, Xd:int, A:list, P:list, policy:ndarray, 
+             n_sim:int = 1000, show:bool = False) -> float:
+    maxrewards = []
+    for _ in range(n_sim):
+        x = Xd - 1 
+        revenue = 0
+        for t in range(Td-2):
+            # follow optimal policy
+            action = policy[x,t]
+            if action != 0:
+                act_index = A.index(action)
+                prob = P[act_index]
+
+                # probabilistic
+                if uniform() < prob:
+                    x -= 1
+                    revenue += action
+
+        maxrewards.append(revenue)
+    plt.hist(maxrewards, bins = 30)
+    plt.ylabel('Frequency')
+    plt.xlabel('Revenue obtained using optimal policy')
+    plt.tight_layout()
+    plt.savefig('simulation.png')
+    if show == True:
+        plt.show()
+    plt.close()
+    print('Mean expected revenue', meanrev := mean(maxrewards))
+    return meanrev
 
 if __name__ == '__main__':
     # GOAL: MAX SALES (max expected cumulative rewards)
@@ -71,5 +106,6 @@ if __name__ == '__main__':
     P = [0.8, 0.5, 0.1]
 
     # AB parts of the assignment
-    ab_results = basic_inventory_dp(T_dim, X_dim, A, P)
-    plot_policy(T_dim, X_dim, ab_results['policy'][0])
+    MAXREV, rewards, rDF, policy, pDF = basic_inventory_dp(T_dim, X_dim, A, P)
+    plot_policy(T_dim, X_dim, policy)
+    avg_reward = simulate(T_dim, X_dim, A, P, policy)
