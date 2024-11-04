@@ -1,14 +1,21 @@
-from numpy import zeros, argmax, ndarray, meshgrid, mean
+from numpy import zeros, argmax, ndarray, meshgrid, mean, dtype
 from numpy.random import uniform
 from pandas import DataFrame
 import matplotlib.pyplot as plt
 
-def basic_inventory_dp(T_dim:int, X_dim:int, A:list, P:list
+def basic_inventory_dp(T_dim:int, X_dim:int, A:list, P:list,
+                       partDE:bool = False
                        )->tuple[float,
                                 ndarray,DataFrame,
                                 ndarray, DataFrame]:
     
-    DP = zeros((X_dim, T_dim)) # initialize with zeros 
+    if partDE:
+        # use structured array
+        DP = zeros((X_dim, T_dim),
+                   dtype = dtype([('revenue', 'f8'), ('set_price', 'i4')])) # add extra dimension to State space
+    else:
+        DP = zeros((X_dim, T_dim)) # initialize with zeros 
+    
     POLICY = zeros((X_dim,T_dim-1))
 
     # Expected immediate reward = prob of action * value of action
@@ -21,42 +28,75 @@ def basic_inventory_dp(T_dim:int, X_dim:int, A:list, P:list
     # go backwards filling the table from the ...<-498th<-499th<-500th column
     # 501st column is all just zeros (no value after time horizon)
     for t in range(T_dim-2, -1, -1):
-        assert all(DP[0,:] == 0) # make sure that when inventory 0, value always 0
+        if not partDE:
+            assert all(DP[0,:] == 0) # make sure that when inventory 0, value always 0
         # 0th row - inventory == 0 is untouched, that is the boundary condition from which
         # the divergence in values across inventory levels emerges
         for x in range(1,X_dim):
             possible_actions = []
             for ai, a in enumerate(A):
-                immediate_reward = ER[ai]
-                taken_action = P[ai] * DP[x - 1, t + 1]
-                untaken_action = (1 - P[ai]) * DP[x, t + 1]
-                possible_actions.append(immediate_reward + taken_action + untaken_action)
+                if partDE:
+                    # can only decrease or keep price constant over time, NOT increase! = a(t) >= a(t+1)
+                    # cover both options of sale & no sale
+                    # if cover only no sale option - same result
+                    if a >= DP[x,t+1]['set_price'] and a >= DP[x-1,t+1]['set_price']:
+                        immediate_reward = ER[ai]
+                        taken_action = P[ai] * DP[x - 1, t + 1]['revenue']
+                        untaken_action = (1 - P[ai]) * DP[x, t + 1]['revenue']
+                        possible_actions.append(immediate_reward + taken_action + untaken_action)
+                    else:
+                        # key piece that was missing
+                        possible_actions.append(-1) # so that not chosen but to preserve indexing
+                else:
+                    immediate_reward = ER[ai]
+                    taken_action = P[ai] * DP[x - 1, t + 1]
+                    untaken_action = (1 - P[ai]) * DP[x, t + 1]
+                    possible_actions.append(immediate_reward + taken_action + untaken_action)
             
             # best_action
             best_action = argmax(possible_actions)
-            DP[x,t] = possible_actions[best_action]
+            if partDE:
+                DP[x,t]['revenue'] = possible_actions[best_action]
+                DP[x,t]['set_price'] = A[best_action] # add taken action to state
+                POLICY[x,t] = A[best_action]
+            else:
+                DP[x,t] = possible_actions[best_action]
             POLICY[x,t] = A[best_action]
 
     # Maximum expected revenue
     print('Optimal expected revenue:', maxrev := DP[100,0])
 
-    DP_frame = DataFrame(DP, columns = [f't={t}' for t in range(T_dim)]).to_csv('Part1matrix.csv')
-    POLICY_frame = DataFrame(POLICY, columns = [f't={t}' for t in range(T_dim-1)]).to_csv('Part1policy.csv')
+    if not partDE:
+        DP_frame = DataFrame(DP, columns = [f't={t}' for t in range(T_dim)]).to_csv('Part1matrix.csv')
+        POLICY_frame = DataFrame(POLICY, columns = [f't={t}' for t in range(T_dim-1)]).to_csv('Part1policy.csv')
 
     return (maxrev,
-            DP, DP_frame,
-           POLICY, POLICY_frame)
+            DP,
+            POLICY)
 
-def plot_policy(Td:int, Xd:int, pol:ndarray,show:bool = False)->None:
+def plot_policy(Td:int, Xd:int, pol:ndarray,show:bool = False,
+                name:str = 'optimal_policy_partB.png')->None:
     X, Y = meshgrid(list(range(Td-1)),
                     list(range(Xd)))
     
-    policy_plot = plt.contourf(X,Y,pol, levels = 1)
-    plt.colorbar(policy_plot, label = 'Optimal policy (t, x)')
+    # policy_plot = plt.contour(X,Y,pol, levels = [0,50,100,200])
+    cmap = plt.get_cmap('viridis', 3)  # Define a colormap with N-1 colors
+    
+    pol[0,0] = 200 # dirty trick to allow same colorbar for both plots
+    
+    policy_plot = plt.pcolormesh(X,Y,pol,
+                                 cmap = cmap)
+    plt.colorbar(policy_plot, label = 'Optimal policy (t, x)', 
+                 values = [50,100,200], boundaries = [0,50,100,200],
+                 drawedges = True, cmap = cmap)
     plt.xlabel('Time period (t)')
     plt.ylabel('Remaining inventory (x)')
+    # start from one
+    plt.yticks([1]+[tick for tick in range(0,101,20)][1:])
+    plt.xticks([0,100,200,300,400,499])
+    plt.ylim(bottom = 1)
     plt.tight_layout()
-    plt.savefig('optimal_policy_partB.png')
+    plt.savefig(name)
     if show == True:
         plt.show()
     plt.close()
@@ -80,7 +120,11 @@ def simulate(Td:int, Xd:int, A:list, P:list, policy:ndarray,
                     revenue += action
 
         maxrewards.append(revenue)
-    plt.hist(maxrewards, bins = 30)
+
+    print('Mean expected revenue', meanrev := mean(maxrewards))
+
+    plt.hist(maxrewards, bins = 50)
+    plt.axvline(x= meanrev, color = 'r', linestyle= "--") # mean expected revenue
     plt.ylabel('Frequency')
     plt.xlabel('Revenue obtained using optimal policy')
     plt.tight_layout()
@@ -88,7 +132,6 @@ def simulate(Td:int, Xd:int, A:list, P:list, policy:ndarray,
     if show == True:
         plt.show()
     plt.close()
-    print('Mean expected revenue', meanrev := mean(maxrewards))
     return meanrev
 
 if __name__ == '__main__':
@@ -106,6 +149,16 @@ if __name__ == '__main__':
     P = [0.8, 0.5, 0.1]
 
     # AB parts of the assignment
-    MAXREV, rewards, rDF, policy, pDF = basic_inventory_dp(T_dim, X_dim, A, P)
+    MAXREV, rewards, policy = basic_inventory_dp(T_dim, X_dim, A, P)
     plot_policy(T_dim, X_dim, policy)
     avg_reward = simulate(T_dim, X_dim, A, P, policy)
+
+    # Part D, E
+    # State (Xt): (Inventory left at time t, PRICE at time t) TUPLE
+    
+
+    # Actions (A(Price t+1)): Change price to a E {50, 100, 200} & a >= Price t+1 
+    # at every time point will include only actions with higher price than price at X(t+1)
+    mr, rew, pol = basic_inventory_dp(T_dim, X_dim, A, P, partDE=True)
+    plot_policy(T_dim, X_dim, pol, name = 'optimal_policy_partD.png')
+    
