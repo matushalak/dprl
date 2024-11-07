@@ -1,6 +1,3 @@
-<<<<<<< Updated upstream
-# First part of the first assignment
-=======
 from numpy import zeros, argmax, ndarray, meshgrid, mean, dtype
 from numpy.random import uniform
 from pandas import DataFrame
@@ -186,4 +183,3 @@ if __name__ == '__main__':
     
 # import sys
 # print("Python version:", sys.version)
->>>>>>> Stashed changes
