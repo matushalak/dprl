@@ -123,10 +123,12 @@ def simulate(Td:int, Xd:int, A:list, P:list, policy:ndarray,
 
     print('Mean expected revenue', meanrev := mean(maxrewards))
 
-    plt.hist(maxrewards, bins = 50)
-    plt.axvline(x= meanrev, color = 'r', linestyle= "--") # mean expected revenue
+    plt.hist(maxrewards, bins = 'auto')
+    plt.title(f'Histogram of revenue obtained over {n_sim} simulations')
+    plt.axvline(x= meanrev, color = 'r', linestyle= "--", label = f'Average Revenue: {meanrev}') # mean expected revenue
     plt.ylabel('Frequency')
     plt.xlabel('Revenue obtained using optimal policy')
+    plt.legend()
     plt.tight_layout()
     plt.savefig('simulation.png')
     if show == True:
