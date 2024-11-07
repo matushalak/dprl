@@ -1,3 +1,4 @@
+import numpy as np
 from numpy import zeros, argmax, ndarray, meshgrid, mean, dtype
 from numpy.random import uniform
 from pandas import DataFrame
@@ -123,10 +124,14 @@ def simulate(Td:int, Xd:int, A:list, P:list, policy:ndarray,
 
     print('Mean expected revenue', meanrev := mean(maxrewards))
 
-    plt.hist(maxrewards, bins = 50)
-    plt.axvline(x= meanrev, color = 'r', linestyle= "--") # mean expected revenue
+    plt.hist(maxrewards, bins = "auto")
+    # plt.axvline(x= meanrev, color = 'r', linestyle= "--") # mean expected revenue
+    plt.axvline(np.mean(maxrewards), color='r', linestyle='dashed', linewidth=1.5, label=f'\nAverage Reward: {np.mean(maxrewards):.2f}\n')
+    plt.xlabel('Total Reward')
     plt.ylabel('Frequency')
-    plt.xlabel('Revenue obtained using optimal policy')
+    # plt.xlabel('Revenue obtained using optimal policy')
+    plt.title('Histogram of Rewards over 1000 Simulations')
+    plt.legend()
     plt.tight_layout()
     plt.savefig('simulation.png')
     if show == True:
@@ -134,52 +139,57 @@ def simulate(Td:int, Xd:int, A:list, P:list, policy:ndarray,
     plt.close()
     return meanrev
 
-# if __name__ == '__main__':
-#     # GOAL: MAX SALES (max expected cumulative rewards)
-#     # Time (T): 500:0 decisions left in finite time horizon
-#     # State (Xt): Invenstory left at time t - 0:100
-#     #Dimensions of DP matrix
-#     T_dim, X_dim = 501, 101
-
-#     # Actions (A): Change price to 200 | 100 | 50
-#     # and corresponding immediate reward
-#     A = [50,100,200]
-
-#     # probability of sale with given price
-#     P = [0.8, 0.5, 0.1]
-
-#     # AB parts of the assignment
-#     MAXREV, rewards, policy = basic_inventory_dp(T_dim, X_dim, A, P)
-#     plot_policy(T_dim, X_dim, policy)
-#     avg_reward = simulate(T_dim, X_dim, A, P, policy)
-#     print("Average reward from 1000 simulations:", avg_reward)
-
-
-#     # Part D, E
-#     # State (Xt): (Inventory left at time t, PRICE at time t) TUPLE
+def plot_inventory_over_time(self):
+    inventory = self.initial_inventory
+    inventory_levels = [inventory]
+    for t in range(self.T):
+        if inventory == 0:
+            break
+        action = self.policy[t, inventory, 0]
+        sale = np.random.rand() < self.probabilities[action]
+        if sale:
+            inventory -= 1
+        inventory_levels.append(inventory)
     
+    plt.figure(figsize=(10, 6))
+    plt.plot(range(len(inventory_levels)), inventory_levels, marker='o')
+    plt.xlabel('Time Period')
+    plt.ylabel('Inventory Level')
+    plt.title('Inventory Level Over Time (Single Simulation)')
+    plt.show()
 
-#     # Actions (A(Price t+1)): Change price to a E {50, 100, 200} & a >= Price t+1 
-#     # at every time point will include only actions with higher price than price at X(t+1)
-#     mr, rew, pol = basic_inventory_dp(T_dim, X_dim, A, P, partDE=True)
-#     plot_policy(T_dim, X_dim, pol, name = 'optimal_policy_partD.png')
 
 if __name__ == '__main__':
-    # Initial setup for DP
+    # GOAL: MAX SALES (max expected cumulative rewards)
+    # Time (T): 500:0 decisions left in finite time horizon
+    # State (Xt): Invenstory left at time t - 0:100
+    #Dimensions of DP matrix
     T_dim, X_dim = 501, 101
-    A = [50, 100, 200]
+
+    # Actions (A): Change price to 200 | 100 | 50
+    # and corresponding immediate reward
+    A = [50,100,200]
+
+    # probability of sale with given price
     P = [0.8, 0.5, 0.1]
 
-    # Solve for Part D with price constraint
-    max_reward_D, rewards_D, policy_D = basic_inventory_dp(T_dim, X_dim, A, P, partDE=True)
-    
-    # Print the expected maximal reward for Part D
-    print("Expected maximal reward with no price increase constraint (Part D):", max_reward_D)
-    
-    # Plot the optimal policy for Part D
-    plot_policy(T_dim, X_dim, policy_D, name='optimal_policy_partD.png')
+    # AB parts of the assignment
+    MAXREV, rewards, policy = basic_inventory_dp(T_dim, X_dim, A, P)
+    plot_policy(T_dim, X_dim, policy)
+    avg_reward = simulate(T_dim, X_dim, A, P, policy)
+    print("Average reward from 1000 simulations:", avg_reward)
 
+
+    # Part D, E
+    # State (Xt): (Inventory left at time t, PRICE at time t) TUPLE
     
+
+    # Actions (A(Price t+1)): Change price to a E {50, 100, 200} & a >= Price t+1 
+    # at every time point will include only actions with higher price than price at X(t+1)
+    mr, rew, pol = basic_inventory_dp(T_dim, X_dim, A, P, partDE=True)
+    print("Expected maximal reward with no price increase constraint (Part D):", mr)
+    plot_policy(T_dim, X_dim, pol, name = 'optimal_policy_partD.png')
+
     
 # import sys
 # print("Python version:", sys.version)
