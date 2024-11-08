@@ -75,6 +75,8 @@ def basic_inventory_dp(T_dim:int, X_dim:int, A:list, P:list,
             DP,
             POLICY)
 
+
+
 def plot_policy(Td:int, Xd:int, pol:ndarray, Actions:list,
                 name:str, show:bool = False)->None:
     X, Y = meshgrid(list(range(Td-1)),
@@ -101,12 +103,24 @@ def plot_policy(Td:int, Xd:int, pol:ndarray, Actions:list,
         plt.show()
     plt.close()
     
+
+
 def simulate(Td:int, Xd:int, A:list, P:list, policy:ndarray, 
              n_sim:int = 1000, show:bool = False) -> float:
+    '''
+    Produces histogram of revenue earned in T time over n simulations
+    Also produces an example plot earnings in a given simulation
+    '''
     maxrewards = []
-    for _ in range(n_sim):
+    for sim in range(n_sim):
         x = Xd - 1 
         revenue = 0
+
+        # example revenue plot
+        if sim == 0:
+            inventory_levels = [x]
+            revenue_levels = [0]
+
         for t in range(Td-2):
             # follow optimal policy
             action = policy[x,t]
@@ -118,14 +132,19 @@ def simulate(Td:int, Xd:int, A:list, P:list, policy:ndarray,
                 if uniform() < prob:
                     x -= 1
                     revenue += action
+                
+                if sim == 0:
+                    inventory_levels.append(x)
+                    revenue_levels.append(revenue)
 
         maxrewards.append(revenue)
 
     print('Mean expected revenue', meanrev := mean(maxrewards))
 
     plt.hist(maxrewards, bins = 'auto')
-    plt.title(f'Histogram of revenue obtained over {n_sim} simulations')
-    plt.axvline(x= meanrev, color = 'r', linestyle= "--", label = f'Average Revenue: {meanrev}') # mean expected revenue
+    # plt.title(f'Histogram of revenue obtained over {n_sim} simulations')
+    plt.axvline(x= meanrev, color = 'r', linestyle= "--", 
+                label = f'Average Revenue: {meanrev}') # mean expected revenue
     plt.ylabel('Frequency')
     plt.xlabel('Revenue obtained using optimal policy')
     plt.legend()
@@ -134,7 +153,34 @@ def simulate(Td:int, Xd:int, A:list, P:list, policy:ndarray,
     if show == True:
         plt.show()
     plt.close()
+
+    # example revenue plot
+    fig, ax1 = plt.subplots()
+    color = 'tab:red'
+    ax1.set_xlabel('Time Period')
+    ax1.set_ylabel(r'$Inventory\ Level\ (X_t)$', color=color)
+    ax1.plot(xax := range(len(inventory_levels)), inventory_levels, color=color)
+    ax1.tick_params(axis='y', labelcolor=color)
+
+    ax2 = ax1.twinx()  # instantiate a second Axes that shares the same x-axis
+
+    color = 'tab:blue'
+    ax2.set_ylabel(r'$Revenue\ \$\ (V_t)$', color=color) # we already handled the x-label with ax1
+    ax2.plot(xax, revenue_levels, color=color,
+             label = f'Earned revenue = {int(revenue_levels[-1])}$')
+    ax2.tick_params(axis='y', labelcolor=color)
+
+    plt.legend(loc = 8)
+    # plt.title(f'Example simulation run with {revenue_levels[-1]}$ revenue')
+    fig.tight_layout()  # otherwise the right y-label is slightly clipped
+    plt.savefig('example_run.png')
+    if show == True:
+        plt.show()
+    plt.close()
+
     return meanrev
+
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -147,6 +193,7 @@ def parse_args():
     
     return parser.parse_args()
     
+
 
 if __name__ == '__main__':
     # GOAL: MAX SALES (max expected cumulative rewards)
@@ -175,7 +222,7 @@ if __name__ == '__main__':
     plot_policy(T_dim, X_dim, policy, A,
                 name = f'optimal_policy_{T_dim-1}_{X_dim-1}_{A}_partB.png', 
                 show = show_plots)
-    avg_reward = simulate(T_dim, X_dim, A, P, policy)
+    avg_reward = simulate(T_dim, X_dim, A, P, policy, show = show_plots)
 
     # Part D, E
     # State (Xt): (Inventory left at time t, PRICE at time t) TUPLE
