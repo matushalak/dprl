@@ -96,6 +96,7 @@ def plot_policy(Td:int, Xd:int, pol:ndarray, Actions:list,
     # start from one
     plt.yticks([1]+[tick for tick in range(0,Xd,20)][1:])
     plt.xticks([tick for tick in range(0,Td,(Td-1)//5)][:-1] + [Td -2])
+
     plt.ylim(bottom = 1)
     plt.tight_layout()
     plt.savefig(name)
@@ -147,6 +148,7 @@ def simulate(Td:int, Xd:int, A:list, P:list, policy:ndarray,
                 label = f'Average Revenue: {meanrev}') # mean expected revenue
     plt.ylabel('Frequency')
     plt.xlabel('Revenue obtained using optimal policy')
+
     plt.legend()
     plt.tight_layout()
     plt.savefig('simulation.png')
@@ -197,6 +199,7 @@ def parse_args():
 
 if __name__ == '__main__':
     # GOAL: MAX SALES (max expected cumulative rewards)
+
     # generalizable version to any T, X and any number / type of actions & probabilities
     args = parse_args()    
 
@@ -233,4 +236,4 @@ if __name__ == '__main__':
     plot_policy(T_dim, X_dim, pol, A, 
                 show = show_plots, 
                 name = f'optimal_policy_{T_dim-1}_{X_dim-1}_{A}_partD.png')
-    
+
