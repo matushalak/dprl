@@ -2,6 +2,7 @@ from numpy import zeros, argmax, ndarray, meshgrid, mean, dtype
 from numpy.random import uniform
 from pandas import DataFrame
 import matplotlib.pyplot as plt
+import argparse
 
 def basic_inventory_dp(T_dim:int, X_dim:int, A:list, P:list,
                        partDE:bool = False
@@ -74,26 +75,25 @@ def basic_inventory_dp(T_dim:int, X_dim:int, A:list, P:list,
             DP,
             POLICY)
 
-def plot_policy(Td:int, Xd:int, pol:ndarray,show:bool = False,
-                name:str = 'optimal_policy_partB.png')->None:
+def plot_policy(Td:int, Xd:int, pol:ndarray, Actions:list,
+                name:str, show:bool = False)->None:
     X, Y = meshgrid(list(range(Td-1)),
                     list(range(Xd)))
+
+    cmap = plt.get_cmap('viridis', len(Actions))  # Define a colormap with N-1 colors
     
-    # policy_plot = plt.contour(X,Y,pol, levels = [0,50,100,200])
-    cmap = plt.get_cmap('viridis', 3)  # Define a colormap with N-1 colors
-    
-    pol[0,0] = 200 # dirty trick to allow same colorbar for both plots
+    pol[0,:len(Actions)] = Actions # dirty trick to allow same colorbar for both plots
     
     policy_plot = plt.pcolormesh(X,Y,pol,
                                  cmap = cmap)
     plt.colorbar(policy_plot, label = 'Optimal policy (t, x)', 
-                 values = [50,100,200], boundaries = [0,50,100,200],
+                 boundaries = [0] + Actions if 0 not in Actions else Actions,
                  drawedges = True, cmap = cmap)
     plt.xlabel('Time period (t)')
     plt.ylabel('Remaining inventory (x)')
     # start from one
-    plt.yticks([1]+[tick for tick in range(0,101,20)][1:])
-    plt.xticks([0,100,200,300,400,499])
+    plt.yticks([1]+[tick for tick in range(0,Xd,20)][1:])
+    plt.xticks([tick for tick in range(0,Td,(Td-1)//5)][:-1] + [Td -2])
     plt.ylim(bottom = 1)
     plt.tight_layout()
     plt.savefig(name)
@@ -136,31 +136,54 @@ def simulate(Td:int, Xd:int, A:list, P:list, policy:ndarray,
     plt.close()
     return meanrev
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument('-t','--time', type = int, default = 500)
+    parser.add_argument('-i','--inventory', type = int, default = 100)
+    parser.add_argument('-a', '--actions', nargs='+', type = float, default = [50, 100, 200])
+    parser.add_argument('-p', '--probabilities', nargs='+', type = float, default = [0.8, 0.5, 0.1])
+    parser.add_argument('-show_plots', type = bool, default = False)
+    
+    return parser.parse_args()
+    
+
 if __name__ == '__main__':
     # GOAL: MAX SALES (max expected cumulative rewards)
+    # generalizable version to any T, X and any number / type of actions & probabilities
+    args = parse_args()    
+
     # Time (T): 500:0 decisions left in finite time horizon
     # State (Xt): Invenstory left at time t - 0:100
     #Dimensions of DP matrix
-    T_dim, X_dim = 501, 101
-
+    # T_dim, X_dim = 501, 101
+    T_dim = args.time + 1
+    X_dim = args.inventory + 1
+    
     # Actions (A): Change price to 200 | 100 | 50
     # and corresponding immediate reward
-    A = [50,100,200]
-
+    # A = [50,100,200]
+    A = args.actions
+    
     # probability of sale with given price
-    P = [0.8, 0.5, 0.1]
+    # P = [0.8, 0.5, 0.1]
+    P = args.probabilities
+    show_plots = args.show_plots
 
     # AB parts of the assignment
     MAXREV, rewards, policy = basic_inventory_dp(T_dim, X_dim, A, P)
-    plot_policy(T_dim, X_dim, policy)
+    plot_policy(T_dim, X_dim, policy, A,
+                name = f'optimal_policy_{T_dim-1}_{X_dim-1}_{A}_partB.png', 
+                show = show_plots)
     avg_reward = simulate(T_dim, X_dim, A, P, policy)
 
     # Part D, E
     # State (Xt): (Inventory left at time t, PRICE at time t) TUPLE
-    
 
     # Actions (A(Price t+1)): Change price to a E {50, 100, 200} & a >= Price t+1 
     # at every time point will include only actions with higher price than price at X(t+1)
     mr, rew, pol = basic_inventory_dp(T_dim, X_dim, A, P, partDE=True)
-    plot_policy(T_dim, X_dim, pol, name = 'optimal_policy_partD.png')
+    plot_policy(T_dim, X_dim, pol, A, 
+                show = show_plots, 
+                name = f'optimal_policy_{T_dim-1}_{X_dim-1}_{A}_partD.png')
     
