@@ -1,8 +1,8 @@
-import numpy as np
 from numpy import zeros, argmax, ndarray, meshgrid, mean, dtype
 from numpy.random import uniform
 from pandas import DataFrame
 import matplotlib.pyplot as plt
+import argparse
 
 def basic_inventory_dp(T_dim:int, X_dim:int, A:list, P:list,
                        partDE:bool = False
@@ -75,26 +75,28 @@ def basic_inventory_dp(T_dim:int, X_dim:int, A:list, P:list,
             DP,
             POLICY)
 
-def plot_policy(Td:int, Xd:int, pol:ndarray,show:bool = False,
-                name:str = 'optimal_policy_partB.png')->None:
+
+
+def plot_policy(Td:int, Xd:int, pol:ndarray, Actions:list,
+                name:str, show:bool = False)->None:
     X, Y = meshgrid(list(range(Td-1)),
                     list(range(Xd)))
+
+    cmap = plt.get_cmap('viridis', len(Actions))  # Define a colormap with N-1 colors
     
-    # policy_plot = plt.contour(X,Y,pol, levels = [0,50,100,200])
-    cmap = plt.get_cmap('viridis', 3)  # Define a colormap with N-1 colors
-    
-    pol[0,0] = 200 # dirty trick to allow same colorbar for both plots
+    pol[0,:len(Actions)] = Actions # dirty trick to allow same colorbar for both plots
     
     policy_plot = plt.pcolormesh(X,Y,pol,
                                  cmap = cmap)
     plt.colorbar(policy_plot, label = 'Optimal policy (t, x)', 
-                 values = [50,100,200], boundaries = [0,50,100,200],
+                 boundaries = [0] + Actions if 0 not in Actions else Actions,
                  drawedges = True, cmap = cmap)
     plt.xlabel('Time period (t)')
     plt.ylabel('Remaining inventory (x)')
     # start from one
-    plt.yticks([1]+[tick for tick in range(0,101,20)][1:])
-    plt.xticks([0,100,200,300,400,499])
+    plt.yticks([1]+[tick for tick in range(0,Xd,20)][1:])
+    plt.xticks([tick for tick in range(0,Td,(Td-1)//5)][:-1] + [Td -2])
+
     plt.ylim(bottom = 1)
     plt.tight_layout()
     plt.savefig(name)
@@ -102,12 +104,24 @@ def plot_policy(Td:int, Xd:int, pol:ndarray,show:bool = False,
         plt.show()
     plt.close()
     
+
+
 def simulate(Td:int, Xd:int, A:list, P:list, policy:ndarray, 
              n_sim:int = 1000, show:bool = False) -> float:
+    '''
+    Produces histogram of revenue earned in T time over n simulations
+    Also produces an example plot earnings in a given simulation
+    '''
     maxrewards = []
-    for _ in range(n_sim):
+    for sim in range(n_sim):
         x = Xd - 1 
         revenue = 0
+
+        # example revenue plot
+        if sim == 0:
+            inventory_levels = [x]
+            revenue_levels = [0]
+
         for t in range(Td-2):
             # follow optimal policy
             action = policy[x,t]
@@ -119,77 +133,107 @@ def simulate(Td:int, Xd:int, A:list, P:list, policy:ndarray,
                 if uniform() < prob:
                     x -= 1
                     revenue += action
+                
+                if sim == 0:
+                    inventory_levels.append(x)
+                    revenue_levels.append(revenue)
 
         maxrewards.append(revenue)
 
     print('Mean expected revenue', meanrev := mean(maxrewards))
 
-    plt.hist(maxrewards, bins = "auto")
-    # plt.axvline(x= meanrev, color = 'r', linestyle= "--") # mean expected revenue
-    plt.axvline(np.mean(maxrewards), color='r', linestyle='dashed', linewidth=1.5, label=f'\nAverage Reward: {np.mean(maxrewards):.2f}\n')
-    plt.xlabel('Total Reward')
+    plt.hist(maxrewards, bins = 'auto')
+    # plt.title(f'Histogram of revenue obtained over {n_sim} simulations')
+    plt.axvline(x= meanrev, color = 'r', linestyle= "--", 
+                label = f'Average Revenue: {meanrev}') # mean expected revenue
     plt.ylabel('Frequency')
-    # plt.xlabel('Revenue obtained using optimal policy')
-    plt.title('Histogram of Rewards over 1000 Simulations')
+    plt.xlabel('Revenue obtained using optimal policy')
+
     plt.legend()
     plt.tight_layout()
     plt.savefig('simulation.png')
     if show == True:
         plt.show()
     plt.close()
+
+    # example revenue plot
+    fig, ax1 = plt.subplots()
+    color = 'tab:red'
+    ax1.set_xlabel('Time Period')
+    ax1.set_ylabel(r'$Inventory\ Level\ (X_t)$', color=color)
+    ax1.plot(xax := range(len(inventory_levels)), inventory_levels, color=color)
+    ax1.tick_params(axis='y', labelcolor=color)
+
+    ax2 = ax1.twinx()  # instantiate a second Axes that shares the same x-axis
+
+    color = 'tab:blue'
+    ax2.set_ylabel(r'$Revenue\ \$\ (V_t)$', color=color) # we already handled the x-label with ax1
+    ax2.plot(xax, revenue_levels, color=color,
+             label = f'Earned revenue = {int(revenue_levels[-1])}$')
+    ax2.tick_params(axis='y', labelcolor=color)
+
+    plt.legend(loc = 8)
+    # plt.title(f'Example simulation run with {revenue_levels[-1]}$ revenue')
+    fig.tight_layout()  # otherwise the right y-label is slightly clipped
+    plt.savefig('example_run.png')
+    if show == True:
+        plt.show()
+    plt.close()
+
     return meanrev
 
-def plot_inventory_over_time(self):
-    inventory = self.initial_inventory
-    inventory_levels = [inventory]
-    for t in range(self.T):
-        if inventory == 0:
-            break
-        action = self.policy[t, inventory, 0]
-        sale = np.random.rand() < self.probabilities[action]
-        if sale:
-            inventory -= 1
-        inventory_levels.append(inventory)
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument('-t','--time', type = int, default = 500)
+    parser.add_argument('-i','--inventory', type = int, default = 100)
+    parser.add_argument('-a', '--actions', nargs='+', type = float, default = [50, 100, 200])
+    parser.add_argument('-p', '--probabilities', nargs='+', type = float, default = [0.8, 0.5, 0.1])
+    parser.add_argument('-show_plots', type = bool, default = False)
     
-    plt.figure(figsize=(10, 6))
-    plt.plot(range(len(inventory_levels)), inventory_levels, marker='o')
-    plt.xlabel('Time Period')
-    plt.ylabel('Inventory Level')
-    plt.title('Inventory Level Over Time (Single Simulation)')
-    plt.show()
+    return parser.parse_args()
+    
 
 
 if __name__ == '__main__':
     # GOAL: MAX SALES (max expected cumulative rewards)
+
+    # generalizable version to any T, X and any number / type of actions & probabilities
+    args = parse_args()    
+
     # Time (T): 500:0 decisions left in finite time horizon
     # State (Xt): Invenstory left at time t - 0:100
     #Dimensions of DP matrix
-    T_dim, X_dim = 501, 101
-
+    # T_dim, X_dim = 501, 101
+    T_dim = args.time + 1
+    X_dim = args.inventory + 1
+    
     # Actions (A): Change price to 200 | 100 | 50
     # and corresponding immediate reward
-    A = [50,100,200]
-
+    # A = [50,100,200]
+    A = args.actions
+    
     # probability of sale with given price
-    P = [0.8, 0.5, 0.1]
+    # P = [0.8, 0.5, 0.1]
+    P = args.probabilities
+    show_plots = args.show_plots
 
     # AB parts of the assignment
     MAXREV, rewards, policy = basic_inventory_dp(T_dim, X_dim, A, P)
-    plot_policy(T_dim, X_dim, policy)
-    avg_reward = simulate(T_dim, X_dim, A, P, policy)
-    print("Average reward from 1000 simulations:", avg_reward)
-
+    plot_policy(T_dim, X_dim, policy, A,
+                name = f'optimal_policy_{T_dim-1}_{X_dim-1}_{A}_partB.png', 
+                show = show_plots)
+    avg_reward = simulate(T_dim, X_dim, A, P, policy, show = show_plots)
 
     # Part D, E
     # State (Xt): (Inventory left at time t, PRICE at time t) TUPLE
-    
 
     # Actions (A(Price t+1)): Change price to a E {50, 100, 200} & a >= Price t+1 
     # at every time point will include only actions with higher price than price at X(t+1)
     mr, rew, pol = basic_inventory_dp(T_dim, X_dim, A, P, partDE=True)
-    print("Expected maximal reward with no price increase constraint (Part D):", mr)
-    plot_policy(T_dim, X_dim, pol, name = 'optimal_policy_partD.png')
+    plot_policy(T_dim, X_dim, pol, A, 
+                show = show_plots, 
+                name = f'optimal_policy_{T_dim-1}_{X_dim-1}_{A}_partD.png')
 
-    
-# import sys
-# print("Python version:", sys.version)
