@@ -109,7 +109,7 @@ def basic_inventory_dp(T_dim:int, X_dim:int, A:list, P:list,
             POLICY[x,t] = A[best_action]
 
     # Maximum expected revenue
-    print('Optimal expected revenue:', maxrev := DP[100,0])
+    print('Optimal expected revenue:', maxrev := DP[X_dim-1,0])
 
     if not partDE:
         DP_frame = DataFrame(DP, columns = [f't={t}' for t in range(T_dim)]).to_csv('Part1matrix.csv')
