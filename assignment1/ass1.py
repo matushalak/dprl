@@ -1,3 +1,4 @@
+# Author: Matus Halak, 2724858
 from numpy import zeros, argmax, ndarray, meshgrid, mean, dtype
 from numpy.random import uniform
 from pandas import DataFrame
