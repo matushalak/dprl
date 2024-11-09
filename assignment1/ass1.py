@@ -4,6 +4,49 @@ from pandas import DataFrame
 import matplotlib.pyplot as plt
 import argparse
 
+
+def main():
+    # GOAL: MAX SALES (max expected cumulative rewards)
+
+    # generalizable version to any T, X and any number / type of actions & probabilities
+    args = parse_args()    
+
+    # Time (T): 500:0 decisions left in finite time horizon
+    # State (Xt): Invenstory left at time t - 0:100
+    #Dimensions of DP matrix
+    # T_dim, X_dim = 501, 101
+    T_dim = args.time + 1
+    X_dim = args.inventory + 1
+    
+    # Actions (A): Change price to 200 | 100 | 50
+    # and corresponding immediate reward
+    # A = [50,100,200]
+    A = args.actions
+    
+    # probability of sale with given price
+    # P = [0.8, 0.5, 0.1]
+    P = args.probabilities
+    show_plots = args.show_plots
+
+    # AB parts of the assignment
+    MAXREV, rewards, policy = basic_inventory_dp(T_dim, X_dim, A, P)
+    plot_policy(T_dim, X_dim, policy, A,
+                name = f'optimal_policy_{T_dim-1}_{X_dim-1}_{A}_partB.png', 
+                show = show_plots)
+    avg_reward = simulate(T_dim, X_dim, A, P, policy, show = show_plots)
+
+    # Part D, E
+    # State (Xt): (Inventory left at time t, PRICE at time t) TUPLE
+
+    # Actions (A(Price t+1)): Change price to a E {50, 100, 200} & a >= Price t+1 
+    # at every time point will include only actions with higher price than price at X(t+1)
+    mr, rew, pol = basic_inventory_dp(T_dim, X_dim, A, P, partDE=True)
+    plot_policy(T_dim, X_dim, pol, A, 
+                show = show_plots, 
+                name = f'optimal_policy_{T_dim-1}_{X_dim-1}_{A}_partD.png')
+
+
+
 def basic_inventory_dp(T_dim:int, X_dim:int, A:list, P:list,
                        partDE:bool = False
                        )->tuple[float,
@@ -65,7 +108,7 @@ def basic_inventory_dp(T_dim:int, X_dim:int, A:list, P:list,
             POLICY[x,t] = A[best_action]
 
     # Maximum expected revenue
-    print('Optimal expected revenue:', maxrev := DP[100,0])
+    print('Optimal expected revenue:', maxrev := DP[X_dim-1,0])
 
     if not partDE:
         DP_frame = DataFrame(DP, columns = [f't={t}' for t in range(T_dim)]).to_csv('Part1matrix.csv')
@@ -194,46 +237,7 @@ def parse_args():
     parser.add_argument('-show_plots', type = bool, default = False)
     
     return parser.parse_args()
-    
 
 
 if __name__ == '__main__':
-    # GOAL: MAX SALES (max expected cumulative rewards)
-
-    # generalizable version to any T, X and any number / type of actions & probabilities
-    args = parse_args()    
-
-    # Time (T): 500:0 decisions left in finite time horizon
-    # State (Xt): Invenstory left at time t - 0:100
-    #Dimensions of DP matrix
-    # T_dim, X_dim = 501, 101
-    T_dim = args.time + 1
-    X_dim = args.inventory + 1
-    
-    # Actions (A): Change price to 200 | 100 | 50
-    # and corresponding immediate reward
-    # A = [50,100,200]
-    A = args.actions
-    
-    # probability of sale with given price
-    # P = [0.8, 0.5, 0.1]
-    P = args.probabilities
-    show_plots = args.show_plots
-
-    # AB parts of the assignment
-    MAXREV, rewards, policy = basic_inventory_dp(T_dim, X_dim, A, P)
-    plot_policy(T_dim, X_dim, policy, A,
-                name = f'optimal_policy_{T_dim-1}_{X_dim-1}_{A}_partB.png', 
-                show = show_plots)
-    avg_reward = simulate(T_dim, X_dim, A, P, policy, show = show_plots)
-
-    # Part D, E
-    # State (Xt): (Inventory left at time t, PRICE at time t) TUPLE
-
-    # Actions (A(Price t+1)): Change price to a E {50, 100, 200} & a >= Price t+1 
-    # at every time point will include only actions with higher price than price at X(t+1)
-    mr, rew, pol = basic_inventory_dp(T_dim, X_dim, A, P, partDE=True)
-    plot_policy(T_dim, X_dim, pol, A, 
-                show = show_plots, 
-                name = f'optimal_policy_{T_dim-1}_{X_dim-1}_{A}_partD.png')
-
+    main()
