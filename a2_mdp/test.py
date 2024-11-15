@@ -39,7 +39,9 @@ def oned():
 
 def trans():
     P = np.load('Transition_ALL.npy')
+    PZ = np.load('full_mat.npz')['arr_0'] # need to select which array from the zip
     P0 = np.loadtxt('FIXED.txt')
     print((P[:,:,0] == P0).all())
+    print((PZ == P).all())
 
 trans()

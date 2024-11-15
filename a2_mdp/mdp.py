@@ -1,7 +1,7 @@
 # @matushalak
 # Markov Decision Process assignment 2 DPRL
 # infinite horizon problem
-from numpy import ndarray, zeros, arange, savetxt, einsum, unique, save
+from numpy import ndarray, zeros, arange, savetxt, einsum, unique, savez_compressed, float16
 from itertools import product
 
 def mdp(capacity:tuple[int, int] = [20, 20], holding_costs:tuple[float, float] = [1, 2], order_costs: float = 5):
@@ -24,7 +24,8 @@ def mdp(capacity:tuple[int, int] = [20, 20], holding_costs:tuple[float, float] =
     # Transition probability matrix (P) without actions, action (0,0)
     P = zeros((len(STATES), 
                 len(STATES),
-                len(all_actions)+1))
+                len(all_actions)+1),
+                dtype= float16)
 
 
     for a, (o1, o2) in enumerate([(0,0)]+all_actions):
@@ -63,7 +64,7 @@ def mdp(capacity:tuple[int, int] = [20, 20], holding_costs:tuple[float, float] =
 
     # save P matrix to inspect
     savetxt('2d.txt', P[:,:,0], fmt = '%.2f')
-    save('full_mat', P)
+    savez_compressed('full_mat', P)
     return STATES
 
 
