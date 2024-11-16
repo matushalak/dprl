@@ -1,10 +1,12 @@
 # @matushalak
 # Markov Decision Process assignment 2 DPRL
 # infinite horizon problem
-from numpy import ndarray, zeros, arange, savetxt, einsum, unique, savez_compressed, float16
+from numpy import ndarray, zeros, arange, savetxt, where, array, full, argmin
+from numpy.random import randint, uniform, seed
+from numpy.linalg import eig
 from itertools import product
 
-def mdp(capacity:tuple[int, int] = [20, 20], holding_costs:tuple[float, float] = [1, 2], order_costs: float = 5):
+def mdp(capacity:tuple[int, int] = [20, 20], o:int = 5):
     # a)
     # State space (X)
     c1, c2 = capacity
@@ -18,54 +20,40 @@ def mdp(capacity:tuple[int, int] = [20, 20], holding_costs:tuple[float, float] =
     STATES = [(i, j) for i, j in product(I1, I2)] # X
 
     # b)
-    # make all other transition probability matrices
-    # all possible actions 3rd dimension of P matrix
-    all_actions = order(state = (1,1))
-    # Transition probability matrix (P) without actions, action (0,0)
+    # Transition probability matrix (P)
     P = zeros((len(STATES), 
-                len(STATES),
-                len(all_actions)+1),
-                dtype= float16)
+                len(STATES)))
 
-
-    for a, (o1, o2) in enumerate([(0,0)]+all_actions):
+    # for a, (o1, o2) in enumerate([(0,0)]+all_actions):
         # Row = FROM, Column = TO
-        for FROM, (i1, i2) in enumerate(STATES):
-            if a == 0:
-                # straight away include fixed policy condition at Depth 0
-                if 1 in (i1, i2):
-                    # order up to 5
-                    TO = [STATES.index((i1 if i1 >= 5 else 5,
-                                        i2 if i2 >= 5 else 5))]
-                
-                else:
-                    # otherwise no order
-                    TO = [STATES.index((i1+j1, i2+j2)) 
-                        for j1 in range(-1, 1) for j2 in range(-1, 1) 
-                        if 0 not in (i1+j1, i2+j2)]
-            
-            # General case for all possible actions
-            else:
-                # breakpoint()
-                # still take into account sales BUT also add orders to that
-                TO = [STATES.index((i1+j1+o1 if i1+j1+o1 <= I1[-1] else i1+j1, # if that action cannot be performed on this inventory level, only take into account sales 
-                                    i2+j2+o2 if i2+j2+o2 <= I2[-1] else i2+j2)) # if that action cannot be performed on this inventory level, only take into account sales
-                      for j1 in range(-1, 1) for j2 in range(-1, 1) ]
-                    #   if 0 not in (i1+j1, i2+j2)]
-            
-
-
-            # my interpretation Right or wrong?
-            # dictionary lookup: faster over if/else or match/case
-            assert len(TO) != 3
-            p = {1 : 1.0, 2 : 0.5, 4 : 0.25}
-            # for that FROM state, give corresponding TO states and corresponding probabilities
-            P[FROM, TO, a] = p[len(TO)] # this gives the filled transition probability matrix
+    for FROM, (i1, i2) in enumerate(STATES):
+        # if a == 0:
+            # straight away include fixed policy condition at Depth 0
+        if 1 in (i1, i2):
+            # order up to 5
+            # XXX change !!!!
+            # possibility to sell at I = 1 after order
+            TO = [STATES.index((i1+j1 if i1 > 5 else 5+j1,
+                                i2+j2 if i2 > 5 else 5+j2))
+                                for j1 in range(-1, 1) for j2 in range(-1, 1) ]
+        
+        else:
+            # otherwise no order
+            TO = [STATES.index((i1+j1, i2+j2)) 
+                for j1 in range(-1, 1) for j2 in range(-1, 1) 
+                if 0 not in (i1+j1, i2+j2)]
+    
+        # dictionary lookup: faster over if/else or match/case
+        assert len(TO) != 3
+        p = {1 : 1.0, 2 : 0.5, 4 : 0.25}
+        # for that FROM state, give corresponding TO states and corresponding probabilities
+        P[FROM, TO] = p[len(TO)] # this gives the filled transition probability matrix
+        assert P[FROM,:].sum() == 1
 
     # save P matrix to inspect
-    savetxt('2d.txt', P[:,:,0], fmt = '%.2f')
-    savez_compressed('full_mat', P)
-    return STATES
+    savetxt('2d.txt', P, fmt = '%.2f')
+    # savez_compressed('full_mat', P)
+    return P, STATES
 
 
 # a)
@@ -90,36 +78,80 @@ def order(state:tuple[int, int], max_invL:tuple[int, int] = [20, 20], fixed:bool
                                                     arange(min_order[1], max_order[1]+1))]
         return all_orders
     
-# TODO
-# need to take into account holding costs & order costs -> both immediate costs
-# can do inside loop
-# def costs(x:tuple[int, int], cap: tuple[int,int],
-#           h = tuple[float, float], o = float,
-#           fixed:bool = False):
-#     C = zeros(cap)
-#     # use fixed order policy, only 
-#     if fixed:
-#         pass
-#     else:
-#         pass
-
-
 # c)
-# start with random x0
-def simulate(X:ndarray, A:list, P:ndarray,
-             h:list[float, float], o:float,
-             T_sim:int = 1e3):
-    long_run_average = 0
-    return long_run_average
+# start with random x0, fixed actions
+def simulate(h:tuple[float, float] = (1,2), o:float = 5, 
+             d:tuple[float,float] = (.5,.5),
+             T_sim:int = 1e5) -> float:
+    # average of all initial states
+    long_run_costs = 0
+    x = randint(1, 21, 2)
+    # x = array((1,1))
+    print(x)
+    for t in range(round(T_sim)):
+        long_run_costs += x[0] * h[0] + x[1] * h[1] + (5 if 1 in x else 0)
+
+        ord = array([0,0])
+        if 1 in x:
+            # if t < 300:
+            #     print(t, x)
+            ord[x <= o] = o - x[x <= o]
+
+        demand = uniform(size = 2)
+        x[demand < d] -= 1
+
+        # orders arrive end of day
+        x += ord
+
+    return long_run_costs / T_sim
 
 
 # d)
 # start with random x0
-def limiting_distribution(X:ndarray, A:list, P:ndarray,
-                          h:list[float, float], o:float,
-                          T_sim:1e3):
-    long_run_average = 0
-    return long_run_average
+def stationary_distribution(Xs:list, P:ndarray,
+                          h:list[float, float] = [1, 2], o:float = 5,
+                          iteration:bool = False, T_sim:int = 1e5, d:tuple[float,float] = (.5,.5)) -> float:
+
+    if iteration:
+        x = randint(1, 21, 2)
+        # x = array((1,1))
+
+        π = zeros(len(Xs))
+        for t in range(round(T_sim)):
+            π[Xs.index(tuple(x))] += 1
+
+            ord = array([0,0])
+            if 1 in x:
+                ord[x <= o] = o - x[x <= o]
+            
+            demand = uniform(size = 2)
+            x[demand < d] -= 1
+
+            # orders arrive end of day
+            x += ord
+
+        π = π / round(T_sim)
+
+    # exact π calculation
+    else:
+        # stationary dist == left eigenvector of transition matrix
+        eigvals, eigvects = eig(P.T) # get left eigenvectors by transposing transition matrix)
+        π =  eigvects[:,argmin(abs(eigvals - 1))].real
+        π = abs(π / sum(π)) # probabilities
+        print("Residual:", max(abs((π @ P) - π)))
+        assert all((π @ P).round(10) == π.round(10)) # stationary dist = left eigenvector of P
+        
+    Xs = array(Xs)
+    # elementwise multiplication
+    holdingCs = full(Xs.shape, h) * Xs
+    holdingCs = holdingCs.sum(axis = 1) # now a 1D vector
+    
+    # order costs = boolean mask multiplied by order costs
+    orders = ((Xs[:,0] == 1) | (Xs[:,1] == 1)) * o
+
+    # COSTS = holding costs + order costs
+    C = holdingCs + orders
+    return π @ C, π # same as sum(π * C)
 
 
 # e)
@@ -134,7 +166,19 @@ def poisson_value_iteration(X:ndarray, P:ndarray,
 
 #%% running the script
 def main():
-    mdp()
+    P, X  = mdp()
+    # c)
+    long_term1 = simulate()
+    print(f'Simulation: {long_term1}')
+    # d)
+    long_term2, πsim = stationary_distribution(X, P, iteration=True)
+    print(f'Stationary SIM: {long_term2}')
+    long_term2m, πexact = stationary_distribution(X, P, iteration=False)
+    print(f'Stationary MATH: {long_term2m}')
+    assert πsim.sum().round(8) == 1 and πexact.sum().round(8) == 1
+    
+    print(abs(πexact - πsim).max())
+    print(πexact - πsim)
 
 if __name__ == '__main__':
     main()
