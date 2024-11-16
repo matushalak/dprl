@@ -87,7 +87,7 @@ def simulate(h:tuple[float, float] = (1,2), o:float = 5,
     long_run_costs = 0
     x = randint(1, 21, 2)
     # x = array((1,1))
-    print(x)
+    # print(x)
     for t in range(round(T_sim)):
         long_run_costs += x[0] * h[0] + x[1] * h[1] + (5 if 1 in x else 0)
 
@@ -111,7 +111,7 @@ def simulate(h:tuple[float, float] = (1,2), o:float = 5,
 def stationary_distribution(Xs:list, P:ndarray,
                           h:list[float, float] = [1, 2], o:float = 5,
                           iteration:bool = False, T_sim:int = 1e5, d:tuple[float,float] = (.5,.5)) -> float:
-
+    # simulated π calculation
     if iteration:
         x = randint(1, 21, 2)
         # x = array((1,1))
@@ -138,9 +138,10 @@ def stationary_distribution(Xs:list, P:ndarray,
         eigvals, eigvects = eig(P.T) # get left eigenvectors by transposing transition matrix)
         π =  eigvects[:,argmin(abs(eigvals - 1))].real
         π = abs(π / sum(π)) # probabilities
-        print("Residual:", max(abs((π @ P) - π)))
+    
+        print("π @ P vs π:", max(abs((π @ P) - π)))
         assert all((π @ P).round(10) == π.round(10)) # stationary dist = left eigenvector of P
-        
+    
     Xs = array(Xs)
     # elementwise multiplication
     holdingCs = full(Xs.shape, h) * Xs
@@ -151,34 +152,47 @@ def stationary_distribution(Xs:list, P:ndarray,
 
     # COSTS = holding costs + order costs
     C = holdingCs + orders
-    return π @ C, π # same as sum(π * C)
+    return π @ C, π, C # π @ C dot product same as sum(π * C)
 
 
 # e)
 # initiate with random V0
-def poisson_value_iteration(X:ndarray, P:ndarray,
-                            epsilon:float):
-    long_run_average = 0
-    return long_run_average
-
+def poisson_value_iteration(C:ndarray, P:ndarray,
+                            epsilon:float = 1e-8):
+    Vt = C
+    delta = Vt.max() - Vt.min()
+    
+    while delta > epsilon:
+        Vt1 = C + P @ Vt
+        delta = max(Vt1 - Vt) - min(Vt1 - Vt)
+        if delta > epsilon:
+            Vt = Vt1
+    
+    return (Vt1 - Vt).mean()
 
 
 
 #%% running the script
 def main():
+    # a), b)
     P, X  = mdp()
+    
     # c)
     long_term1 = simulate()
     print(f'Simulation: {long_term1}')
+    
     # d)
-    long_term2, πsim = stationary_distribution(X, P, iteration=True)
-    print(f'Stationary SIM: {long_term2}')
-    long_term2m, πexact = stationary_distribution(X, P, iteration=False)
+    long_term2, πsim, COSTS = stationary_distribution(X, P, iteration=True)
+    print(f'Stationary ITER: {long_term2}')
+    long_term2m, πexact, COSTS = stationary_distribution(X, P, iteration=False)
     print(f'Stationary MATH: {long_term2m}')
     assert πsim.sum().round(8) == 1 and πexact.sum().round(8) == 1
-    
-    print(abs(πexact - πsim).max())
-    print(πexact - πsim)
+    print('π_math vs π_sim', abs(πexact - πsim).max()) # smaller w more simulations
 
+    # e)
+    ltc3 = poisson_value_iteration(COSTS, P)
+    print(f'Poisson: {ltc3}')
+
+    
 if __name__ == '__main__':
     main()
