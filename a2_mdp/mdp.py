@@ -1,7 +1,7 @@
 # @matushalak
 # Markov Decision Process assignment 2 DPRL
 # infinite horizon problem
-from numpy import ndarray, zeros, arange, savetxt, where, array, full, argmin, isin
+from numpy import ndarray, zeros, arange, savetxt, where, array, full, argmin, isin, einsum
 from numpy.random import randint, uniform, seed
 from numpy.linalg import eig
 from itertools import product
@@ -65,12 +65,12 @@ def order(state:tuple[int, int], max_invL:tuple[int, int] = [20, 20]):
     # all possible orders for given state
     max_order = [max_invL[0]-state[0],
                 max_invL[1]-state[1]]
-    min_order = [0 if state[0] > 1 else 1,
-                0 if state[1] > 1 else 1]
+    # min_order = [0 if state[0] > 1 else 1,
+    #             0 if state[1] > 1 else 1]
     
-    all_orders = [(o1, o2) for o1, o2 in product(arange(min_order[0], max_order[0]+1),
-                                                arange(min_order[1], max_order[1]+1))]
-    return array(all_orders)
+    all_orders = [(o1, o2) for o1, o2 in product(range(max_order[0]+1),
+                                                range(max_order[1]+1))]
+    return all_orders
     
 # c)
 # start with random x0, fixed actions
@@ -162,8 +162,45 @@ def poisson_value_iteration(C:ndarray, P:ndarray,
     
     return (Vt1 - Vt).mean()
 
+# TODO: Change actions to order up TO
+def big_transition(STATES:list, capacity = (20,20)):
+    all_actions = order((1,1))
+    c1, c2 = capacity
+    I1 = arange(1,c1+1)
+    I2 = arange(1,c2+1)
+    P = zeros((len(STATES), 
+                len(STATES),
+                len(all_actions)))
+    
+    for a, (o1, o2) in enumerate(all_actions):
+        # Row = FROM, Column = TO
+        for FROM, (i1, i2) in enumerate(STATES):
+            # carefully engineer so that for 0 orders, if inventory one, still need to order at least one            
+            # o1 = 1 if (i1 == 1 and o1 == 0) else o1
+            # o2 = 1 if (i2 == 1 and o2 == 0) else o2
+
+            # General case for all possible actions
+            # still take into account sales BUT also add orders to that
+            # if that action cannot be performed on this inventory level, take maximum 
+            TO = [STATES.index((i1+j1+o1 if i1+j1+o1 <= I1[-1] else i1+j1, 
+                                i2+j2+o2 if i2+j2+o2 <= I2[-1] else i2+j2)) 
+                                for j1, j2 in product(range(-1, 1), repeat = 2)
+                                if 0 not in (i1+j1+o1, i2+j2+o2)]
+
+            p = {1 : 1.0, 2 : 0.5, 4 : 0.25}
+            # for that FROM state, give corresponding TO states and corresponding probabilities
+            P[FROM, TO, a] = p[len(set(TO))] # this gives the filled transition probability matrix
+            try:
+                assert P[FROM,:, a].sum() == 1
+            except AssertionError:
+                breakpoint()
+
+    return P, all_actions
+
+
 # f)
 # Bellman equation value iteration for optimal policy
+# TODO: Change actions to order up TO
 def bellman(Xs:list, epsilon:float = 1e-8,
             h:list[float, float] = [1, 2], o:float = 5,):
     '''
@@ -171,51 +208,49 @@ def bellman(Xs:list, epsilon:float = 1e-8,
     Vt+1(x) = max_a {C_a(x) + ∑_y p(y|x,a) * Vt(y)} 
     Vt+1(x) = max_a {C_a(x) + p_y @ Vt_y} # p_y probabilities where can go TO, costs where can go TO
     '''
+    Pa, actions = big_transition(Xs)
     Xs = array(Xs)
+    actions = array(actions)
     # doesn't change
     holding = full(Xs.shape, h) * Xs
     holding = holding.sum(axis = 1) # now a 1D vector
-    # probabilities, always 4 options, every state
-    probs = full(4, 0.25)
+    
+    # calculate order costs for all actions where something ordered
+    # always order cost except when nothing ordered a[0]
+    Cxa = full((400,400), holding + 5).T
+    Cxa[((Xs[:,0] != 1) & (Xs[:,1] != 1)), 0] = holding[((Xs[:,0] != 1) & (Xs[:,1] != 1))]
+    # breakpoint()
+    # breakpoint()
+    
+    # # probabilities, always 4 options, every state
+    # probs = full(4, 0.25)
     
     # start as immediate costs
-    Vt = holding.copy()
+    # Vt = holding.copy()
+    Vt = zeros(holding.shape)
     Vt1 = zeros(Vt.shape)
     Policies = full(Xs.shape, [0,0]) # initialize without ordering anything
 
-    delta = Vt.max() - Vt.min()
+    delta = 10
     loop = 0
     while delta > epsilon:
-        # loop += 1
-        # print(delta)
-        for ix, x in enumerate(Xs):
-            # all_relevant_actions
-            actions = order(x)
-            # holding cost already taken into account, independent of action
-            costs = full(actions.shape[0], holding[ix], dtype=float)
-            for ia, act in enumerate(actions):
-                # add immediate order cost unless both orders 0
-                cost_ord = (o if not all(act == 0) else 0) # elementwise
+        loop += 1
+        # Immediate = Cxa
+        # Past costs
+        past_a = einsum('ijk,j->ik', Pa, Vt)
+        combined_C_a = Cxa + past_a
 
-                possible_sales = array(list(product(range(-1,1), repeat = 2)))
-                # -/0 possible sales + x[I1, I2] + orders[o1, o2]
-                past_states = possible_sales + x + act
-                # all possible states
-                breakpoint()
-                cost_past = probs @ Vt[(isin(Xs[:, 0], past_states[:, 0]) & 
-                                        isin(Xs[:, 1], past_states[:, 1]))]
+        Vt1[:] = combined_C_a.min(axis = 1)
+        Policies[:] = actions[argmin(combined_C_a, axis = 1)]
 
-                costs[ia] += cost_ord + cost_past
-            # breakpoint()    
-            Vt1[ix] = min(costs)
-            Policies[ix] = actions[argmin(costs)]
-
-        # breakpoint()    
-        delta = max(Vt1 - Vt) - min(Vt1 - Vt)
+        delta = (Vt1 - Vt).max() - (Vt1 - Vt).min()
+        # delta = abs(Vt1-Vt).max()
+        print(loop, delta, res := (Vt1 - Vt).mean())
         if delta > epsilon:
             Vt[:] = Vt1
-    breakpoint()
-    return (Vt1 - Vt).mean(), Policies
+
+    # breakpoint()
+    return res, Policies
 
 
 #%% running the script
