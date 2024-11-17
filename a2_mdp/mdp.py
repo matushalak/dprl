@@ -1,12 +1,14 @@
 # @matushalak
 # Markov Decision Process assignment 2 DPRL
 # infinite horizon problem
-from numpy import ndarray, zeros, arange, savetxt, where, array, full, argmin, isin, einsum
+from numpy import ndarray, zeros, arange, savetxt, where, array, full, argmin, einsum, dtype, flipud, empty
 from numpy.random import randint, uniform, seed
 from numpy.linalg import eig
 from itertools import product
+from seaborn import heatmap
+import matplotlib.pyplot as plt
 
-def mdp(capacity:tuple[int, int] = [20, 20], o:int = 5):
+def mdp(capacity:tuple[int, int] = [20, 20], o:int = 5) -> tuple[ndarray, list]:
     # a)
     # State space (X)
     c1, c2 = capacity
@@ -20,7 +22,7 @@ def mdp(capacity:tuple[int, int] = [20, 20], o:int = 5):
     STATES = [(i, j) for i, j in product(I1, I2)] # X
 
     # b)
-    # Transition probability matrix (P)
+    # Transition probability matrix (P) under FIXED policy
     P = zeros((len(STATES), 
                 len(STATES)))
 
@@ -59,17 +61,15 @@ def mdp(capacity:tuple[int, int] = [20, 20], o:int = 5):
 # Action space (A) - possible orders, 2 independent actions
 # theoretically, actions are order UP to levels {1, ..., 20} | I + a <= 20
 # or orders of (0,0), (0,1), (1,0), ..., (19, 19) 
-#   => 361 options, I guess policy iteration is choosing between those options?
 # EVERY ACTION = NEW TRANSITION PROBABILITY MATRIX
-def order(state:tuple[int, int], max_invL:tuple[int, int] = [20, 20]):
+def order(state:tuple[int, int], max_invL:tuple[int, int] = [20, 20]
+          ) -> list:
     # all possible orders for given state
     max_order = [max_invL[0]-state[0],
                 max_invL[1]-state[1]]
-    # min_order = [0 if state[0] > 1 else 1,
-    #             0 if state[1] > 1 else 1]
     
     all_orders = [(o1, o2) for o1, o2 in product(range(max_order[0]+1),
-                                                range(max_order[1]+1))]
+                                                 range(max_order[1]+1))]
     return all_orders
     
 # c)
@@ -104,7 +104,8 @@ def simulate(h:tuple[float, float] = (1,2), o:float = 5,
 # start with random x0
 def stationary_distribution(Xs:list, P:ndarray,
                             h:list[float, float] = [1, 2], o:float = 5,
-                            iteration:bool = False, T_sim:int = 1e5, d:tuple[float,float] = (.5,.5)) -> float:
+                            iteration:bool = False, T_sim:int = 1e5, d:tuple[float,float] = (.5,.5)
+                            ) -> tuple[float, ndarray, ndarray]:
     # simulated π calculation
     if iteration:
         x = randint(1, 21, 2)
@@ -150,7 +151,7 @@ def stationary_distribution(Xs:list, P:ndarray,
 # e)
 # initiate with random V0
 def poisson_value_iteration(C:ndarray, P:ndarray,
-                            epsilon:float = 1e-8):
+                            epsilon:float = 1e-8) -> float:
     Vt = C
     delta = Vt.max() - Vt.min()
     
@@ -162,8 +163,8 @@ def poisson_value_iteration(C:ndarray, P:ndarray,
     
     return (Vt1 - Vt).mean()
 
-# TODO: Change actions to order up TO
-def big_transition(STATES:list, capacity = (20,20)):
+def big_transition(STATES:list, capacity = (20,20)
+                   ) -> tuple[ndarray, list]:
     all_actions = order((1,1))
     c1, c2 = capacity
     I1 = arange(1,c1+1)
@@ -172,41 +173,41 @@ def big_transition(STATES:list, capacity = (20,20)):
                 len(STATES),
                 len(all_actions)))
     
+    # Create lookup dictionary for O(1) state to index mapping
+    state_to_idx = {tuple(state): idx for idx, state in enumerate(STATES)}
+
     for a, (o1, o2) in enumerate(all_actions):
         # Row = FROM, Column = TO
         for FROM, (i1, i2) in enumerate(STATES):
-            # carefully engineer so that for 0 orders, if inventory one, still need to order at least one            
-            # o1 = 1 if (i1 == 1 and o1 == 0) else o1
-            # o2 = 1 if (i2 == 1 and o2 == 0) else o2
-
             # General case for all possible actions
             # still take into account sales BUT also add orders to that
-            # if that action cannot be performed on this inventory level, take maximum 
-            TO = [STATES.index((i1+j1+o1 if i1+j1+o1 <= I1[-1] else i1+j1, 
-                                i2+j2+o2 if i2+j2+o2 <= I2[-1] else i2+j2)) 
+            # if that action cannot be performed on this inventory level, just take the demand without that action
+            TO = [state_to_idx[(i1+j1+o1 if i1+j1+o1 <= I1[-1] else i1+j1, 
+                                i2+j2+o2 if i2+j2+o2 <= I2[-1] else i2+j2 )]
                                 for j1, j2 in product(range(-1, 1), repeat = 2)
                                 if 0 not in (i1+j1+o1, i2+j2+o2)]
 
             p = {1 : 1.0, 2 : 0.5, 4 : 0.25}
             # for that FROM state, give corresponding TO states and corresponding probabilities
             P[FROM, TO, a] = p[len(set(TO))] # this gives the filled transition probability matrix
-            try:
-                assert P[FROM,:, a].sum() == 1
-            except AssertionError:
-                breakpoint()
-
+            assert P[FROM,:, a].sum() == 1
+            
     return P, all_actions
 
 
 # f)
 # Bellman equation value iteration for optimal policy
-# TODO: Change actions to order up TO
 def bellman(Xs:list, epsilon:float = 1e-8,
-            h:list[float, float] = [1, 2], o:float = 5,):
+            h:list[float, float] = [1, 2], o:float = 5
+            ) -> tuple[float, ndarray, ndarray]:
     '''
-    Vt+1 = max_a {C_a + P_a @ Vt}
-    Vt+1(x) = max_a {C_a(x) + ∑_y p(y|x,a) * Vt(y)} 
-    Vt+1(x) = max_a {C_a(x) + p_y @ Vt_y} # p_y probabilities where can go TO, costs where can go TO
+    Vt+1 = min_a {C_a + P_a @ Vt}
+
+    g)
+    Seems to be optimal to only order when stock runs out -> 1 and even then, 
+    to order little of the item (2) to minimize having to pay holding costs for a long time
+
+    If we try to maximize the costs instead of
     '''
     Pa, actions = big_transition(Xs)
     Xs = array(Xs)
@@ -218,12 +219,8 @@ def bellman(Xs:list, epsilon:float = 1e-8,
     # calculate order costs for all actions where something ordered
     # always order cost except when nothing ordered a[0]
     Cxa = full((400,400), holding + 5).T
+    # no order costs for action (0,0) unless one of inventories = 5 (in that case HAVE to order)
     Cxa[((Xs[:,0] != 1) & (Xs[:,1] != 1)), 0] = holding[((Xs[:,0] != 1) & (Xs[:,1] != 1))]
-    # breakpoint()
-    # breakpoint()
-    
-    # # probabilities, always 4 options, every state
-    # probs = full(4, 0.25)
     
     # start as immediate costs
     # Vt = holding.copy()
@@ -245,13 +242,34 @@ def bellman(Xs:list, epsilon:float = 1e-8,
 
         delta = (Vt1 - Vt).max() - (Vt1 - Vt).min()
         # delta = abs(Vt1-Vt).max()
-        print(loop, delta, res := (Vt1 - Vt).mean())
+        # print(loop, delta, res := (Vt1 - Vt).mean())
         if delta > epsilon:
             Vt[:] = Vt1
 
-    # breakpoint()
-    return res, Policies
+    return (Vt1 - Vt).mean(), Policies, actions
 
+def visualize_policy(Pol:ndarray, A:ndarray, X:ndarray) -> None:
+    indextostate = {i:tuple(state-1) for i, state in enumerate(X)}
+    
+    pZ = zeros((20,20))
+    vals = empty((20, 20), dtype=object)
+    for i, p in enumerate(Pol):
+        pZ[indextostate[i]] = sum(p)
+        vals[indextostate[i]] = f"({p[0]}, {p[1]})" if not all(p == 0) else '0'
+    
+    
+    # Create a figure with a custom gridspec layout
+    fig = plt.figure(figsize=(11, 8))
+    hmp = heatmap(pZ,
+                  annot = vals, fmt = 's',
+                  linewidth=.8,
+                  cbar_kws={'boundaries': arange(0, pZ.max()+1)})
+    hmp.invert_yaxis()
+    hmp.set_yticklabels(arange(1, 21))
+    hmp.set_xticklabels(arange(1, 21))
+    plt.tight_layout()
+    plt.savefig('optimal_policy.png')
+    plt.show()
 
 #%% running the script
 def main():
@@ -260,23 +278,24 @@ def main():
     
     # c)
     long_term1 = simulate()
-    print(f'Simulation: {long_term1}')
+    print(f'Simulation Long-term: {long_term1}')
     
     # d)
     long_term2, πsim, COSTS = stationary_distribution(X, P, iteration=True)
-    print(f'Stationary ITER: {long_term2}')
+    print(f'Stationary dist. ITER: {long_term2}')
     long_term2m, πexact, COSTS = stationary_distribution(X, P, iteration=False)
-    print(f'Stationary MATH: {long_term2m}')
+    print(f'Stationary dist. MATH: {long_term2m}')
     assert πsim.sum().round(8) == 1 and πexact.sum().round(8) == 1
 
     # e)
     ltc3 = poisson_value_iteration(COSTS, P)
-    print(f'Poisson: {ltc3}')
+    print(f'Poisson Value ITER: {ltc3}')
 
     # f)
-    ltc4, POL = bellman(X)
+    ltc4, POL, A = bellman(X)
     print('Minimal long term cost following optimal policy:', ltc4)
     # g)
+    visualize_policy(POL, A, array(X))
 
     # checks
     print("π_math @ P vs π_math:", max(abs((πexact @ P) - πexact)))
