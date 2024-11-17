@@ -7,6 +7,7 @@ from numpy.linalg import eig
 from itertools import product
 from seaborn import heatmap
 import matplotlib.pyplot as plt
+import time
 
 def mdp(capacity:tuple[int, int] = [20, 20], o:int = 5) -> tuple[ndarray, list]:
     # a)
@@ -57,6 +58,7 @@ def mdp(capacity:tuple[int, int] = [20, 20], o:int = 5) -> tuple[ndarray, list]:
     return P, STATES
 
 
+
 # a)
 # Action space (A) - possible orders, 2 independent actions
 # theoretically, actions are order UP to levels {1, ..., 20} | I + a <= 20
@@ -71,7 +73,9 @@ def order(state:tuple[int, int], max_invL:tuple[int, int] = [20, 20]
     all_orders = [(o1, o2) for o1, o2 in product(range(max_order[0]+1),
                                                  range(max_order[1]+1))]
     return all_orders
-    
+
+
+
 # c)
 # start with random x0, fixed actions
 def simulate(h:tuple[float, float] = (1,2), o:float = 5, 
@@ -98,6 +102,7 @@ def simulate(h:tuple[float, float] = (1,2), o:float = 5,
         x += ord
 
     return long_run_costs / T_sim
+
 
 
 # d)
@@ -148,6 +153,7 @@ def stationary_distribution(Xs:list, P:ndarray,
     return π @ C, π, C # π @ C dot product same as sum(π * C)
 
 
+
 # e)
 # initiate with random V0
 def poisson_value_iteration(C:ndarray, P:ndarray,
@@ -162,6 +168,8 @@ def poisson_value_iteration(C:ndarray, P:ndarray,
             Vt = Vt1
     
     return (Vt1 - Vt).mean()
+
+
 
 def big_transition(STATES:list, capacity = (20,20)
                    ) -> tuple[ndarray, list]:
@@ -193,6 +201,7 @@ def big_transition(STATES:list, capacity = (20,20)
             assert P[FROM,:, a].sum() == 1
             
     return P, all_actions
+
 
 
 # f)
@@ -248,6 +257,8 @@ def bellman(Xs:list, epsilon:float = 1e-8,
 
     return (Vt1 - Vt).mean(), Policies, actions
 
+
+
 def visualize_policy(Pol:ndarray, A:ndarray, X:ndarray) -> None:
     indextostate = {i:tuple(state-1) for i, state in enumerate(X)}
     
@@ -274,8 +285,11 @@ def visualize_policy(Pol:ndarray, A:ndarray, X:ndarray) -> None:
     plt.savefig('optimal_policy.png')
     plt.show()
 
+
+
 #%% running the script
 def main():
+    start = time.time()
     # a), b)
     P, X  = mdp()
     
@@ -297,6 +311,9 @@ def main():
     # f)
     ltc4, POL, A = bellman(X)
     print('Minimal long term cost following optimal policy:', ltc4)
+
+    end = time.time()
+    print('TIME', end - start)
     # g)
     visualize_policy(POL, A, array(X))
 
