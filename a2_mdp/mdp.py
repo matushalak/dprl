@@ -259,14 +259,17 @@ def visualize_policy(Pol:ndarray, A:ndarray, X:ndarray) -> None:
     
     
     # Create a figure with a custom gridspec layout
-    fig = plt.figure(figsize=(11, 8))
+    fig = plt.figure(figsize=(11, 6))
     hmp = heatmap(pZ,
                   annot = vals, fmt = 's',
                   linewidth=.8,
-                  cbar_kws={'boundaries': arange(0, pZ.max()+1)})
+                  cbar_kws={'boundaries': arange(0, pZ.max()+1),
+                            'label':'Total number of ordered products'})
     hmp.invert_yaxis()
     hmp.set_yticklabels(arange(1, 21))
     hmp.set_xticklabels(arange(1, 21))
+    plt.ylabel('Product 1 inventory level')
+    plt.xlabel('Product 2 inventory level')
     plt.tight_layout()
     plt.savefig('optimal_policy.png')
     plt.show()
