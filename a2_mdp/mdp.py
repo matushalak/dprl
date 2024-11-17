@@ -1,15 +1,16 @@
 # @matushalak
 # Markov Decision Process assignment 2 DPRL
 # infinite horizon problem
-from numpy import ndarray, zeros, arange, savetxt, where, array, full, argmin, einsum, dtype, flipud, empty
+from numpy import ndarray, zeros, arange, savetxt, array, full, argmin, einsum, empty
 from numpy.random import randint, uniform, seed
 from numpy.linalg import eig
 from itertools import product
 from seaborn import heatmap
 import matplotlib.pyplot as plt
 import time
+import argparse
 
-def mdp(capacity:tuple[int, int] = [20, 20], o:int = 5) -> tuple[ndarray, list]:
+def mdp(capacity:tuple[int, int], upto:int = 5) -> tuple[ndarray, list]:
     # a)
     # State space (X)
     c1, c2 = capacity
@@ -35,8 +36,8 @@ def mdp(capacity:tuple[int, int] = [20, 20], o:int = 5) -> tuple[ndarray, list]:
             # order up to 5
             # XXX change !!!!
             # possibility to sell at I = 1 after order
-            TO = [STATES.index((i1+j1 if i1 > 5 else 5+j1,
-                                i2+j2 if i2 > 5 else 5+j2))
+            TO = [STATES.index((i1+j1 if i1 > upto else upto+j1,
+                                i2+j2 if i2 > upto else upto+j2))
                                 for j1, j2 in product(range(-1, 1), repeat = 2)]
         
         else:
@@ -64,7 +65,7 @@ def mdp(capacity:tuple[int, int] = [20, 20], o:int = 5) -> tuple[ndarray, list]:
 # theoretically, actions are order UP to levels {1, ..., 20} | I + a <= 20
 # or orders of (0,0), (0,1), (1,0), ..., (19, 19) 
 # EVERY ACTION = NEW TRANSITION PROBABILITY MATRIX
-def order(state:tuple[int, int], max_invL:tuple[int, int] = [20, 20]
+def order(state:tuple[int, int], max_invL:tuple[int, int]
           ) -> list:
     # all possible orders for given state
     max_order = [max_invL[0]-state[0],
@@ -78,22 +79,22 @@ def order(state:tuple[int, int], max_invL:tuple[int, int] = [20, 20]
 
 # c)
 # start with random x0, fixed actions
-def simulate(h:tuple[float, float] = (1,2), o:float = 5, 
+def simulate(h:tuple[float, float], o:float, cap:tuple[int, int],
+             upto:int = 5, 
              d:tuple[float,float] = (.5,.5),
              T_sim:int = 1e5) -> float:
     # average of all initial states
     long_run_costs = 0
-    x = randint(1, 21, 2)
-    # x = array((1,1))
+    x = array([randint(1, cap[0]), randint(1, cap[1])])
     # print(x)
     for t in range(round(T_sim)):
-        long_run_costs += x[0] * h[0] + x[1] * h[1] + (5 if 1 in x else 0)
+        long_run_costs += x[0] * h[0] + x[1] * h[1] + (o if 1 in x else 0)
 
         ord = array([0,0])
         if 1 in x:
             # if t < 300:
             #     print(t, x)
-            ord[x <= o] = o - x[x <= o]
+            ord[x <= upto] = upto - x[x <= upto]
 
         demand = uniform(size = 2)
         x[demand < d] -= 1
@@ -108,12 +109,13 @@ def simulate(h:tuple[float, float] = (1,2), o:float = 5,
 # d)
 # start with random x0
 def stationary_distribution(Xs:list, P:ndarray,
-                            h:list[float, float] = [1, 2], o:float = 5,
+                            h:list[float, float], o:float, cap:tuple[int, int],
+                            upto:int = 5,
                             iteration:bool = False, T_sim:int = 1e5, d:tuple[float,float] = (.5,.5)
                             ) -> tuple[float, ndarray, ndarray]:
     # simulated π calculation
     if iteration:
-        x = randint(1, 21, 2)
+        x = array([randint(1, cap[0]), randint(1, cap[1])])
         # x = array((1,1))
 
         π = zeros(len(Xs))
@@ -122,7 +124,7 @@ def stationary_distribution(Xs:list, P:ndarray,
 
             ord = array([0,0])
             if 1 in x:
-                ord[x <= o] = o - x[x <= o]
+                ord[x <= upto] = upto - x[x <= upto]
             
             demand = uniform(size = 2)
             x[demand < d] -= 1
@@ -171,9 +173,9 @@ def poisson_value_iteration(C:ndarray, P:ndarray,
 
 
 
-def big_transition(STATES:list, capacity = (20,20)
+def big_transition(STATES:list, capacity:tuple[int,int]
                    ) -> tuple[ndarray, list]:
-    all_actions = order((1,1))
+    all_actions = order((1,1), max_invL=capacity)
     c1, c2 = capacity
     I1 = arange(1,c1+1)
     I2 = arange(1,c2+1)
@@ -206,8 +208,8 @@ def big_transition(STATES:list, capacity = (20,20)
 
 # f)
 # Bellman equation value iteration for optimal policy
-def bellman(Xs:list, epsilon:float = 1e-8,
-            h:list[float, float] = [1, 2], o:float = 5
+def bellman(Xs:list, h:list[float, float], o:float, cap:tuple[int, int],
+            epsilon:float = 1e-8
             ) -> tuple[float, ndarray, ndarray]:
     '''
     Vt+1 = min_a {C_a + P_a @ Vt}
@@ -218,7 +220,7 @@ def bellman(Xs:list, epsilon:float = 1e-8,
 
     If we try to maximize the costs instead of
     '''
-    Pa, actions = big_transition(Xs)
+    Pa, actions = big_transition(Xs,capacity=cap)
     Xs = array(Xs)
     actions = array(actions)
     # doesn't change
@@ -227,7 +229,7 @@ def bellman(Xs:list, epsilon:float = 1e-8,
     
     # calculate order costs for all actions where something ordered
     # always order cost except when nothing ordered a[0]
-    Cxa = full((400,400), holding + 5).T
+    Cxa = full((Xs.shape[0],actions.shape[0]), holding + o).T
     # no order costs for action (0,0) unless one of inventories = 5 (in that case HAVE to order)
     Cxa[((Xs[:,0] != 1) & (Xs[:,1] != 1)), 0] = holding[((Xs[:,0] != 1) & (Xs[:,1] != 1))]
     
@@ -259,11 +261,13 @@ def bellman(Xs:list, epsilon:float = 1e-8,
 
 
 
-def visualize_policy(Pol:ndarray, A:ndarray, X:ndarray) -> None:
+def visualize_policy(Pol:ndarray, A:ndarray, X:ndarray, 
+                     h:tuple[float, float], o:float, cap:tuple[int,int],
+                     show_plots:bool = False,) -> None:
     indextostate = {i:tuple(state-1) for i, state in enumerate(X)}
     
-    pZ = zeros((20,20))
-    vals = empty((20, 20), dtype=object)
+    pZ = zeros(cap)
+    vals = empty(cap, dtype=object)
     for i, p in enumerate(Pol):
         pZ[indextostate[i]] = sum(p)
         vals[indextostate[i]] = f"({p[0]}, {p[1]})" if not all(p == 0) else '0'
@@ -277,30 +281,52 @@ def visualize_policy(Pol:ndarray, A:ndarray, X:ndarray) -> None:
                   cbar_kws={'boundaries': arange(0, pZ.max()+1),
                             'label':'Total number of ordered products'})
     hmp.invert_yaxis()
-    hmp.set_yticklabels(arange(1, 21))
-    hmp.set_xticklabels(arange(1, 21))
+    hmp.set_yticklabels(arange(1, cap[0]+1))
+    hmp.set_xticklabels(arange(1, cap[1]+1))
     plt.ylabel('Product 1 inventory level')
     plt.xlabel('Product 2 inventory level')
     plt.tight_layout()
-    plt.savefig('optimal_policy.png')
-    plt.show()
+    plt.savefig(f'optimal_policy-c:{cap}_h:{h}_o:{o}.png')
+    if show_plots:
+        plt.show()
 
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument('-cap', nargs='+', type = int, default = [20,20])
+    parser.add_argument('-holdc', nargs='+', type = float, default = [1,2])
+    parser.add_argument('-ordc', type = float, default = 5)
+    parser.add_argument('-showp', type = bool, default = False)
+    
+    return parser.parse_args()
 
 
 #%% running the script
 def main():
+    seed(420)
+    args = parse_args()
+
+    cap = args.cap
+    h = args.holdc
+    o = args.ordc
+    plots = args.showp
+
     start = time.time()
     # a), b)
-    P, X  = mdp()
+    P, X  = mdp(capacity=cap)
     
     # c)
-    long_term1 = simulate()
+    long_term1 = simulate(h = h, o = o, cap = cap)
     print(f'Simulation Long-term: {long_term1}')
     
     # d)
-    long_term2, πsim, COSTS = stationary_distribution(X, P, iteration=True)
+    long_term2, πsim, COSTS = stationary_distribution(X, P, iteration=True,
+                                                      h = h, o = o, cap = cap)
     print(f'Stationary dist. ITER: {long_term2}')
-    long_term2m, πexact, COSTS = stationary_distribution(X, P, iteration=False)
+    long_term2m, πexact, COSTS = stationary_distribution(X, P, 
+                                                         iteration=False,
+                                                         h = h, o = o, cap = cap)
     print(f'Stationary dist. MATH: {long_term2m}')
     assert πsim.sum().round(8) == 1 and πexact.sum().round(8) == 1
 
@@ -309,13 +335,13 @@ def main():
     print(f'Poisson Value ITER: {ltc3}')
 
     # f)
-    ltc4, POL, A = bellman(X)
+    ltc4, POL, A = bellman(X, h = h, o = o, cap = cap)
     print('Minimal long term cost following optimal policy:', ltc4)
 
     end = time.time()
     print('TIME', end - start)
     # g)
-    visualize_policy(POL, A, array(X))
+    visualize_policy(POL, A, array(X), h = h, o = o, cap = cap, show_plots= plots)
 
     # checks
     print("π_math @ P vs π_math:", max(abs((πexact @ P) - πexact)))
