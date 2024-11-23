@@ -298,7 +298,7 @@ def visualize_policy(Pol:ndarray, A:ndarray, X:ndarray,
     plt.ylabel('Product 1 inventory level')
     plt.xlabel('Product 2 inventory level')
     plt.tight_layout()
-    plt.savefig(f'optimal_policy-c:{cap}_h:{h}_o:{o}.png')
+    plt.savefig(f'optimal_policy-c:{cap}_h:{h}_o:{o}.png', dpi = 500)
     if show_plots:
         plt.show()
 
