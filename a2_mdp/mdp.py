@@ -1,5 +1,17 @@
 # @matushalak
 # Markov Decision Process assignment 2 DPRL
+'''
+Assignment 2, default settings output:
+--------------------------------------
+Simulation Long-term: 10.44767
+Stationary dist. ITER: 10.44283
+Stationary dist. MATH: 10.445065045248867
+Poisson Value ITER: 10.44506504564523
+Minimal long term cost following optimal policy: 7.987500000470679
+TIME 2.681994915008545
+π_math @ P vs π_math: 6.938893903907228e-17
+π_math vs π_sim 0.0015373303167421082
+'''
 # infinite horizon problem
 from numpy import ndarray, zeros, arange, savetxt, array, full, argmin, einsum, empty
 from numpy.random import randint, uniform, seed
@@ -192,8 +204,8 @@ def big_transition(STATES:list, capacity:tuple[int,int]
             # General case for all possible actions
             # still take into account sales BUT also add orders to that
             # if that action cannot be performed on this inventory level, just take the demand without that action
-            TO = [state_to_idx[(i1+j1+o1 if i1+j1+o1 <= I1[-1] else i1+j1, 
-                                i2+j2+o2 if i2+j2+o2 <= I2[-1] else i2+j2 )]
+            TO = [state_to_idx[(i1+j1+o1 if i1+j1+o1 <= c1 else i1+j1, 
+                                i2+j2+o2 if i2+j2+o2 <= c2 else i2+j2 )]
                                 for j1, j2 in product(range(-1, 1), repeat = 2)
                                 if 0 not in (i1+j1+o1, i2+j2+o2)]
 
