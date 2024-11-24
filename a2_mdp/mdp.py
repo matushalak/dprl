@@ -13,7 +13,7 @@ TIME 2.681994915008545
 π_math vs π_sim 0.0015373303167421082
 '''
 # infinite horizon problem
-from numpy import ndarray, zeros, arange, savetxt, array, full, argmin, einsum, empty
+from numpy import ndarray, zeros, arange, savetxt, array, full, argmin, einsum, empty, unique
 from numpy.random import randint, uniform, seed
 from numpy.linalg import eig
 from itertools import product
@@ -63,6 +63,7 @@ def mdp(capacity:tuple[int, int], upto:int = 5) -> tuple[ndarray, list]:
         p = {1 : 1.0, 2 : 0.5, 4 : 0.25}
         # for that FROM state, give corresponding TO states and corresponding probabilities
         P[FROM, TO] = p[len(TO)] # this gives the filled transition probability matrix
+        assert len(set(TO)) not in (1,2)
         assert P[FROM,:].sum() == 1
 
     # save P matrix to inspect
@@ -172,8 +173,10 @@ def stationary_distribution(Xs:list, P:ndarray,
 # initiate with random V0
 def poisson_value_iteration(C:ndarray, P:ndarray,
                             epsilon:float = 1e-8) -> float:
-    Vt = C
-    delta = Vt.max() - Vt.min()
+    # Vt = C
+    # Vt = zeros(C.shape)
+    Vt = randint(1,100,C.shape)
+    delta = 1 # arbitrary
     
     while delta > epsilon:
         Vt1 = C + P @ Vt
@@ -212,8 +215,10 @@ def big_transition(STATES:list, capacity:tuple[int,int]
             p = {1 : 1.0, 2 : 0.5, 4 : 0.25}
             # for that FROM state, give corresponding TO states and corresponding probabilities
             P[FROM, TO, a] = p[len(set(TO))] # this gives the filled transition probability matrix
+            # if len(set(TO)) in (1,2):
+            #     print(f'act: {int(o1),int(o2)} state: {int(i1),int(i2)}, TO: {set(TO)}')
             assert P[FROM,:, a].sum() == 1
-            
+       
     return P, all_actions
 
 
@@ -229,8 +234,6 @@ def bellman(Xs:list, h:list[float, float], o:float, cap:tuple[int, int],
     g)
     Seems to be optimal to only order when stock runs out -> 1 and even then, 
     to order little of the item (2) to minimize having to pay holding costs for a long time
-
-    If we try to maximize the costs instead of
     '''
     Pa, actions = big_transition(Xs,capacity=cap)
     Xs = array(Xs)
@@ -251,7 +254,7 @@ def bellman(Xs:list, h:list[float, float], o:float, cap:tuple[int, int],
     Vt1 = zeros(Vt.shape)
     Policies = full(Xs.shape, [0,0]) # initialize without ordering anything
 
-    delta = 10
+    delta = 10 # arbitrary
     loop = 0
     while delta > epsilon:
         loop += 1
@@ -281,15 +284,23 @@ def visualize_policy(Pol:ndarray, A:ndarray, X:ndarray,
     pZ = zeros(cap)
     vals = empty(cap, dtype=object)
     for i, p in enumerate(Pol):
+        # p[p>0] += 2 # just for fixed policy visualization
         pZ[indextostate[i]] = sum(p)
         vals[indextostate[i]] = f"({p[0]}, {p[1]})" if not all(p == 0) else '0'
     
     
     # Create a figure with a custom gridspec layout
     fig = plt.figure(figsize=(11, 6))
+
+    # Calculate font size dynamically
+    grid_cell_height = 11 / cap[0]  # Figure height divided by rows
+    grid_cell_width = 6 / cap[1]   # Figure width divided by cols
+    font_size = max(min(grid_cell_height*15, grid_cell_width*15), 10)  # Scale and set a minimum size
+
     hmp = heatmap(pZ,
                   annot = vals, fmt = 's',
                   linewidth=.8,
+                  annot_kws = {'size':font_size},
                   cbar_kws={'boundaries': arange(0, pZ.max()+1),
                             'label':'Total number of ordered products'})
     hmp.invert_yaxis()
@@ -309,6 +320,7 @@ def parse_args():
     parser.add_argument('-cap', nargs='+', type = int, default = [20,20])
     parser.add_argument('-holdc', nargs='+', type = float, default = [1,2])
     parser.add_argument('-ordc', type = float, default = 5)
+    parser.add_argument('-upto', type = float, default = 5)
     parser.add_argument('-showp', type = bool, default = False)
     
     return parser.parse_args()
@@ -322,23 +334,24 @@ def main():
     cap = args.cap
     h = args.holdc
     o = args.ordc
+    upto = max(cap) if args.upto > max(cap) else args.upto
     plots = args.showp
 
     start = time.time()
     # a), b)
-    P, X  = mdp(capacity=cap)
+    P, X  = mdp(capacity=cap, upto=upto)
     
     # c)
-    long_term1 = simulate(h = h, o = o, cap = cap)
+    long_term1 = simulate(h = h, o = o, cap = cap, upto=upto)
     print(f'Simulation Long-term: {long_term1}')
     
     # d)
     long_term2, πsim, COSTS = stationary_distribution(X, P, iteration=True,
-                                                      h = h, o = o, cap = cap)
+                                                      h = h, o = o, cap = cap, upto=upto)
     print(f'Stationary dist. ITER: {long_term2}')
     long_term2m, πexact, COSTS = stationary_distribution(X, P, 
                                                          iteration=False,
-                                                         h = h, o = o, cap = cap)
+                                                         h = h, o = o, cap = cap, upto=upto)
     print(f'Stationary dist. MATH: {long_term2m}')
     assert πsim.sum().round(8) == 1 and πexact.sum().round(8) == 1
 
