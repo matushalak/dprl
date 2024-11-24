@@ -192,8 +192,6 @@ def big_transition(STATES:list, capacity:tuple[int,int]
                    ) -> tuple[ndarray, list]:
     all_actions = order((1,1), max_invL=capacity)
     c1, c2 = capacity
-    I1 = arange(1,c1+1)
-    I2 = arange(1,c2+1)
     P = zeros((len(STATES), 
                 len(STATES),
                 len(all_actions)))
@@ -284,7 +282,10 @@ def visualize_policy(Pol:ndarray, A:ndarray, X:ndarray,
     pZ = zeros(cap)
     vals = empty(cap, dtype=object)
     for i, p in enumerate(Pol):
-        # p[p>0] += 2 # just for fixed policy visualization
+        # just for fixed visulization
+        # i1,i2 = indextostate[i]
+        # if not all(p == 0):
+        #     p += [5-i1-1-p[0], 5-i2-1-p[1]]
         pZ[indextostate[i]] = sum(p)
         vals[indextostate[i]] = f"({p[0]}, {p[1]})" if not all(p == 0) else '0'
     
