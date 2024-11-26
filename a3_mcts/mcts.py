@@ -10,8 +10,7 @@ from string import ascii_letters as ascl
 import argparse
 from collections import defaultdict
 
-def string_board(B:ndarray, symbols:dict[int:str, int:str] = ['⚽️','🍎']
-                 ) -> str:
+def string_board(B:ndarray, symbols:dict[int:str, int:str] = {0:'  ', 1:'🍎', 2:'⚽️'}) -> str:
     # printed board with symbols
     header = [' | '+l for l in ascl[:B.shape[1]]]
     PrB = ' '+ ''.join(header)+ ' |  ' +'\n'
@@ -54,41 +53,57 @@ def evaluate_board(B:ndarray):
         return winner # None if no winner (no connect 4), but still pieces left
 
 
-def available_moves(B:ndarray):
-    return [i for i,c in enumerate(B.T) if 0 in c] # transpose for columns
-
-
-def moves(player:int, B:ndarray, possible_moves:list[int]) -> list[ndarray]:
-    assert player in (1,2), 'Needs to be either player 1 or player 2!!!'
-    resulting_states = []
-    for m in possible_moves:
-        # find last row in which 0 is still present
-        B_new = B.copy()[where(B[:,m] == 0)[0][-1], m]
-        B_new[where(B[:,m] == 0)[0][-1], m] = player
-        resulting_states.append(B_new)
-    return resulting_states
-
 # TODO: finish
 class TreeNode():
     def __init__(self, 
-                 B:ndarray, 
-                 player = 2):
-        self.player = player
-        self.amoves = available_moves(B)
+                 B:ndarray,
+                 parent = None): # that's how you identify root node!!!
+        self.player = self.turn(B)
+        self.amoves = self.available_moves(B)
+        self.parent = parent
 
-        self.root = B # root
-        self.children = moves(self.player, self.STATE, self.amoves) # children
+        self.val = 0
+        self.board = B # root
+        # children are Treenodes themselves
+        self.children = self.moves(self.player, self.board, self.amoves, self.parent) 
+
+
+    def available_moves(self, B:ndarray):
+        return [i for i,c in enumerate(B.T) if 0 in c] # transpose for columns
+
+    def turn(self, B:ndarray):
+        counts = [(B == 1).sum(), (B == 2).sum()]
+        # breakpoint()
+        if len(set(counts)) == 2:
+            return counts.index(min(counts)) + 1
+        else:
+            return 1 # if same then 1st players turn 
+
+    def moves(self, player:int, B:ndarray, possible_moves:list[int], parent:'TreeNode'
+              ) -> list['TreeNode']:
+        assert player in (1,2), 'Needs to be either player 1 or player 2!!!'
+        children = []
+        for m in possible_moves:
+            # find last row in which 0 is still present
+            B_new = B.copy()
+            B_new[where(B[:,m] == 0)[0][-1], m] = player
+            # child node
+            child_node = TreeNode(B_new, parent)
+            children.append(child_node)
+        return children
+
 
 # TODO: finish
 def MCTS(startB:ndarray):
     # So that  no error thrown if new board state indexed
-    state_node_map = defaultdict(None)
+    state_node_map = defaultdict(lambda: None)
     sB = string_board(startB)
     B = startB
     while True:
         # Player turn
         # store possible board configurations in state_node_map
         state_node_map[sB] = TreeNode(B)
+        breakpoint()
         # Oponent turn
         # results in B & sB
         if state_node_map[sB]:
@@ -106,7 +121,7 @@ def build_tree(STATE:ndarray):
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-sym', nargs='+', type = str, default = ['⚽️','🍎'])
+    parser.add_argument('-sym', nargs='+', type = str, default = ['🍎','⚽️'])
     return parser.parse_args()
 
 if __name__ == '__main__':
@@ -123,14 +138,14 @@ if __name__ == '__main__':
                         [1, 1, 2, 1, 0, 2, 0]])
     zeroB = zeros((6,7), dtype=int) # for the real game
 
-    # B = randint(1, 3, (6,7), dtype=int) # for testing & evaluation
+    # B = randint(0, 3, (6,7), dtype=int) # for testing & evaluation
     # B = zeroB
     B = hardcodedB
 
     sB = string_board(B, d)
     # winner = evaluate_board(B)
     winner = evaluate_board(B)
-    print(available_moves(B))
+    MCTS(B)
     if winner:
         print(f'WinnerID:{winner} -> {d[winner]}')
     else:
