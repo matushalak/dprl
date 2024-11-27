@@ -5,7 +5,7 @@ Connect Four is a board-size
 6 x 7, representation B \in \R^{6 X 7}
 '''
 from numpy import ndarray, unique, fliplr, array, where, zeros
-from numpy.random import randint
+from numpy.random import randint, choice
 from string import ascii_letters as ascl
 import argparse
 from collections import defaultdict
@@ -20,8 +20,10 @@ def string_board(B:ndarray, symbols:dict[int:str, int:str] = {0:'  ', 1:'🍎', 
         symb = [f'{symbols[n]} |' for n in row]
         PrB += str(i)+ ' |' + ''.join(symb) + ' ' + str(i) + '\n'
     PrB += len(' '+ ''.join(header)+ ' |  ') * '-' + '\n'
-    PrB += ' '+ ''.join(header)+ ' |  '
-    print(PrB)
+    PrB += ' '+ ''.join(header)+ ' |  '+'\n'
+    # Escape sequence to clear previous output, need to know number of lines to move up (PrB.count)
+    print('\033[F'*(PrB.count('\n')), end = '')
+    print(PrB, end='\r')
     return string_board #hashable board representation
 
 
@@ -52,8 +54,6 @@ def evaluate_board(B:ndarray):
     else:
         return winner # None if no winner (no connect 4), but still pieces left
 
-
-# TODO: finish
 class TreeNode():
     def __init__(self, 
                  B:ndarray,
@@ -62,11 +62,14 @@ class TreeNode():
         self.amoves = self.available_moves(B)
         self.parent = parent
 
+        # only increase w back-up
         self.val = 0
-        self.board = B # root
-        # children are Treenodes themselves
-        self.children = self.moves(self.player, self.board, self.amoves, self.parent) 
+        self.visits = 0
 
+        self.board = B # root
+        # children are Treenodes themselves, self is parent of its children
+        # Qs are Q-values associated with each possible child
+        self.children, self.Qs = self.moves(self.player, self.board, self.amoves, parent = self) 
 
     def available_moves(self, B:ndarray):
         return [i for i,c in enumerate(B.T) if 0 in c] # transpose for columns
@@ -83,17 +86,41 @@ class TreeNode():
               ) -> list['TreeNode']:
         assert player in (1,2), 'Needs to be either player 1 or player 2!!!'
         children = []
+        Qs = dict() # Q-values for each possible action a_j(children) from state x_i (parent)
         for m in possible_moves:
             # find last row in which 0 is still present
             B_new = B.copy()
-            B_new[where(B[:,m] == 0)[0][-1], m] = player
+            B_new[where(B_new[:,m] == 0)[0][-1], m] = player
+            strB_new = ''.join([str(n) for n in B_new.ravel()])
+            Qs[strB_new] = 0 # initiate with 0 Q-values
             # child node
             child_node = TreeNode(B_new, parent)
             children.append(child_node)
-        return children
+        return children, Qs
+
+    # Returns -1 (loss), 0(draw), +1 (win)
+    def rollout(self)->int:
+        rollB = self.board.copy()
+        while True:
+            winner = evaluate_board(rollB)
+            if winner:
+                break
+
+            player = self.turn(rollB)
+            move = choice(self.available_moves(rollB))
+            rollB[[where(rollB[:,move] == 0)[0][-1], move]] = player
+
+        match winner:
+            case 0: # draw
+                return 0
+            case 1: # agent won
+                return 1 
+            case 2: # agent lost
+                return -1 
 
 
 # TODO: finish
+# TODO, multiple rollouts / node - especially EARLY in the game
 def MCTS(startB:ndarray):
     # So that  no error thrown if new board state indexed
     state_node_map = defaultdict(lambda: None)
@@ -112,11 +139,6 @@ def MCTS(startB:ndarray):
             state_node_map[sB] = TreeNode(B)
 
         pass
-
-
-# State = current Board config
-def build_tree(STATE:ndarray):
-    pass
 
 
 def parse_args():
