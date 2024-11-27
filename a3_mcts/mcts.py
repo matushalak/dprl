@@ -9,6 +9,7 @@ from numpy.random import randint, choice
 from string import ascii_letters as ascl
 import argparse
 from collections import defaultdict
+import os
 
 def string_board(B:ndarray, symbols:dict[int:str, int:str] = {0:'  ', 1:'🍎', 2:'⚽️'}) -> str:
     # printed board with symbols
@@ -21,8 +22,8 @@ def string_board(B:ndarray, symbols:dict[int:str, int:str] = {0:'  ', 1:'🍎', 
         PrB += str(i)+ ' |' + ''.join(symb) + ' ' + str(i) + '\n'
     PrB += len(' '+ ''.join(header)+ ' |  ') * '-' + '\n'
     PrB += ' '+ ''.join(header)+ ' |  '+'\n'
-    # Escape sequence to clear previous output, need to know number of lines to move up (PrB.count)
-    print('\033[F'*(PrB.count('\n')), end = '')
+    # clear previous output in terminal
+    os.system('clear')
     print(PrB, end='\r')
     return string_board #hashable board representation
 
@@ -49,10 +50,11 @@ def evaluate_board(B:ndarray):
                 # breakpoint()
                 winner = sub_res[0]
                 return winner
-    if 0 not in B:
+    if not (B == 0).any():
         return 0 # draw if no free pieces left
     else:
         return winner # None if no winner (no connect 4), but still pieces left
+
 
 class TreeNode():
     def __init__(self, 
@@ -63,10 +65,12 @@ class TreeNode():
         self.parent = parent
 
         # only increase w back-up
-        self.val = 0
+        self.depth = 0 if not parent else parent.depth + 1
+        self.Q = 0
         self.visits = 0
 
         self.board = B # root
+        self.strB = ''.join([str(n) for n in self.B.ravel()])
         # children are Treenodes themselves, self is parent of its children
         # Qs are Q-values associated with each possible child
         self.children, self.Qs = self.moves(self.player, self.board, self.amoves, parent = self) 
@@ -103,13 +107,14 @@ class TreeNode():
         rollB = self.board.copy()
         while True:
             winner = evaluate_board(rollB)
-            if winner:
+            if winner is not None:
                 break
 
             player = self.turn(rollB)
             move = choice(self.available_moves(rollB))
-            rollB[[where(rollB[:,move] == 0)[0][-1], move]] = player
+            rollB[where(rollB[:,move] == 0)[0][-1], move] = player
 
+        string_board(rollB)
         match winner:
             case 0: # draw
                 return 0
@@ -117,27 +122,63 @@ class TreeNode():
                 return 1 
             case 2: # agent lost
                 return -1 
+            case _:
+                return ValueError('Should always be draw / win / loss')
 
 
 # TODO: finish
 # TODO, multiple rollouts / node - especially EARLY in the game
 def MCTS(startB:ndarray):
+    '''
+    Main function performing Monte Carlo Tree Search Algorithm 
+    with Upper Confidence Trees (UCT) & min-max algorithm to consider playing optimal oponent
+
+    1) Selection:
+        - on nodes previously seen, choose action according to UCB rule 
+        (apply on each previously seen node, balances exploration & exploitation)
+        - for Node.depth == 0, need to random rollout on all possible moves 
+        (ideally multiple times, decreasing as a function of Node depth)
+    2) Expansion
+        - when leaf Node reached add child(ren) of this node
+    3) Simulation
+        - random rollout from one (random) child of leaf Node until end
+    4) Back-up
+        - update Q-value & visits for Nodes in Selection & expansion
+        Q(state, action) = ∑_x' [#x' reached from (x,a)] . (
+        immediate reward (0) + max/min{based on p1/p2}_a' Q(x', a')) // # a taken in state x
+
+        Q(state, action) = All maximal future rewards, possibly achieved by action weighed by their frequency // frequency of action in given state
+            => Gives an estimate of Value / Action in a state
+        - if oponent actions kept negative: use max(p1)-min(p2) approach! 
+            -> max reward for worst-case scenario
+    '''
     # So that  no error thrown if new board state indexed
+    # stores hashable reference to every possible state (which has its depth, children, etc.)
     state_node_map = defaultdict(lambda: None)
     sB = string_board(startB)
     B = startB
     while True:
-        # Player turn
+        # turn determined within treenode_class
         # store possible board configurations in state_node_map
-        state_node_map[sB] = TreeNode(B)
-        breakpoint()
-        # Oponent turn
-        # results in B & sB
         if state_node_map[sB]:
             state = state_node_map[sB]
         else:
             state_node_map[sB] = TreeNode(B)
+            state = state_node_map[sB]
 
+        if state.depth == 0:
+            for ch in state.children:
+                r = ...
+                node.parent = ch
+                # Backup
+                while node.parent is not None:
+                    ...
+
+        breakpoint()
+
+        state_node_map[sB] = TreeNode(B)
+        # Oponent turn
+        # results in B & sB
         pass
 
 
@@ -145,6 +186,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('-sym', nargs='+', type = str, default = ['🍎','⚽️'])
     return parser.parse_args()
+
 
 if __name__ == '__main__':
     args = parse_args()
