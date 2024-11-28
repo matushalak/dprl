@@ -47,7 +47,6 @@ def evaluate_board(B:ndarray):
 
             sub_res = min([rows, cols, diag, antidiag], key = len)
             if len(sub_res) == 1 and sub_res[0] != 0:
-                # breakpoint()
                 winner = sub_res[0]
                 return winner
     if not (B == 0).any():
@@ -73,17 +72,17 @@ class McNode():
         self.depth = 0 if not parent else parent.depth + 1
         # only for ultimate leaf nodes of MCT -1 / 0 / 1
         self.reward = evaluate_board(B)
-        self.state_visits = 1e-6 # #times this state visited, small init for UCT calc
+        self.state_visits = 0 # #times this state visited, small init for UCT calc
 
         # Q-values for each (current_state, possible_action) pair
-        self.Qs = dict.fromkeys(self.actions, zeros(len(self.actions)))
+        self.Qs = {a:0 for a in self.actions}
         # Visits for each (state, action) pair from this state, initialize with small value for UCT calc
-        self.visits = dict.fromkeys(self.actions, zeros(len(self.actions)) + 1e-6) 
+        self.visits = {a:1e-5 for a in self.actions}
         # children are TreeNodes themselves, self is parent of its children
-        self.children = dict.fromkeys(self.actions, None) # added on a need-to-add basis
+        self.children = {a:None for a in self.actions} # added on a need-to-add basis
 
     # Only Add child when needed, no need to generate self.children every time a node is accessed
-    def add_child(self, action:int) -> 'McNode':
+    def add_child(self, action:int) -> tuple['McNode', str]:
         assert self.player in (1,2), 'Needs to be either player 1 or player 2!!!'
         B_new:ndarray = self.board.copy()
         B_new[where(B_new[:,action] == 0)[0][-1], 
@@ -93,14 +92,13 @@ class McNode():
         # action that created you
         ChildNode.parent_move = action # can call this up later
         self.children[action] = ChildNode
-        return ChildNode # for use outside
+        return ChildNode, ChildNode.strB # for use outside
 
     def available_moves(self, B:ndarray):
         return [i for i,c in enumerate(B.T) if 0 in c] # transpose for columns
 
     def turn(self, B:ndarray):
         counts = [(B == 1).sum(), (B == 2).sum()]
-        # breakpoint()
         if len(set(counts)) == 2:
             return counts.index(min(counts)) + 1
         else:
@@ -123,7 +121,7 @@ class McNode():
             move = choice(self.available_moves(rollB))
             rollB[where(rollB[:,move] == 0)[0][-1], move] = player
 
-        string_board(rollB)
+        # string_board(rollB)
         match winner:
             case 0: # draw
                 return 0
@@ -181,11 +179,11 @@ def MCTS(startB:ndarray, SNmap:defaultdict, c:float = 2**0.5, iterations:float =
         SNmap[sB] = StartState
 
     # in MCTS - AFTER Backpropagation: Always start again at root Node!
-    for _ in iterations: # 1000 iterations for each move
+    for sim in range(int(iterations)): # 1000 iterations for each move
         State : McNode = StartState
         path:list[McNode] = [State]
         while True:
-            # Leaf Node
+            # Terminal Node -> can use backpropagation of direct rewards straight away
             if State.reward is not None:
                 break
 
@@ -195,30 +193,37 @@ def MCTS(startB:ndarray, SNmap:defaultdict, c:float = 2**0.5, iterations:float =
             # UCB(x, a) = argmax_a{ Q(x,a) + c. √[ln(x.state_visits) / (x.visits[action])]
             # will weigh unexplored options more initially because of visit initialization w small number
             # UCB here is the action chosen
-            UCB:int = State.actions[minimax(
-                [State.Qs[a] + c * abs(log(State.state_visits) / State.visits[a])**0.5
+            UCB:int = State.actions[minimax(ucbv :=
+                [State.Qs[a] + c * (max(1e-3, log(State.state_visits)) / State.visits[a])**0.5
                  for a in State.actions])]
             
+            print(State.strB, UCB, ucbv)
+            
             # Add if unvisited Child node
-            if State.children[UCB] is None:
-                Ch = State.add_child(UCB)
-                SNmap[Ch.strB] = Ch
-                State = Ch
-            # Continue onto child with highest UCB, if visited
+            if State.children[UCB] == None:
+                State, sB = State.add_child(UCB)
             else:
+                # Continue onto child with highest UCB, if visited
                 State = State.children[UCB]
-
+                
             # path we are following in this iteration, will use to backpropagate along this path
             path.append(State)
 
-            # restart at Root Node
-            # Unvisited Node
-            if all(State.children == None):
-                break
+            # restart at Leaf Node
+            try:
+                if SNmap[sB] is None:
+                    SNmap[sB] = State
+                    print(f'{sim} simulation done')
+                    break
+                # if {*State.children.values()} == {None} and State.reward is None:
+                #     break
+
+            except AttributeError:
+                breakpoint()
    
         # Immediate Reward if terminal node, else Rollout
         r = State.reward if State.reward is not None else State.rollout()
-        for Step in path:
+        for Step in path[::-1]:
             Step.state_visits += 1
 
             if Step.parent is not None:
@@ -228,8 +233,9 @@ def MCTS(startB:ndarray, SNmap:defaultdict, c:float = 2**0.5, iterations:float =
                 Step.parent.Qs[Step.parent_move] += (r - Step.parent.Qs[Step.parent_move] # adjustment toward new reward
                                                         ) / Step.parent.visits[Step.parent_move] # diminishing updates over time
     else:
+        breakpoint()
         minimax:function = max if StartState.player == 1 else min
-        return minimax(StartState.visits.items(), key = lambda x,y: y)[0], SNmap
+        return minimax(StartState.visits.items(), key = lambda item: item[1])[0], SNmap
 
 
 
@@ -243,7 +249,8 @@ if __name__ == '__main__':
     args = parse_args()
     symbols = [' '+s if s.isalnum() else s for s in args.sym]
     d = {0:'  ', 1:symbols[0], 2:symbols[1]}
-    # Board
+    
+    # Board(s)
     # hardcoded for assignment
     hardcodedB = array([[1, 1, 1, 2, 0, 2, 0],
                         [1, 2, 2, 2, 0, 1, 0],
@@ -251,16 +258,20 @@ if __name__ == '__main__':
                         [1, 2, 2, 2, 0, 1, 0],
                         [2, 2, 2, 1, 0, 1, 0],
                         [1, 1, 2, 1, 0, 2, 0]])
-    zeroB = zeros((6,7), dtype=int) # for the real game
-
-    # B = randint(0, 3, (6,7), dtype=int) # for testing & evaluation
+    # for the real game
+    zeroB = zeros((6,7), dtype=int) 
+    # for quicktesting & evaluation
+    # B = randint(0, 3, (6,7), dtype=int) 
     # B = zeroB
     B = hardcodedB
 
-    sB = string_board(B, d)
-    # winner = evaluate_board(B)
+    # Tree dictionary from which we re-use previously seen nodes
+    tree_dict = defaultdict(lambda: None)
+
+    # Initial State
+    move, tree_dict = MCTS(B, tree_dict)
     winner = evaluate_board(B)
-    MCTS(B)
+
     if winner:
         print(f'WinnerID:{winner} -> {d[winner]}')
     else:
