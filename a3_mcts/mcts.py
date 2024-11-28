@@ -10,6 +10,7 @@ from string import ascii_letters as ascl
 import argparse
 from collections import defaultdict
 import os
+import time
 
 def string_board(B:ndarray, symbols:dict[int:str, int:str] = {0:'  ', 1:'🍎', 2:'⚽️'}) -> str:
     # printed board with symbols
@@ -183,6 +184,11 @@ def MCTS(startB:ndarray, SNmap:defaultdict, c:float = 2**0.5, iterations:float =
         State : McNode = StartState
         path:list[McNode] = [State]
         while True:
+            # visualize
+            if sim == int(iterations)-1:
+                _ = string_board(State.board)
+                time.sleep(0.25)
+            
             # Terminal Node -> can use backpropagation of direct rewards straight away
             if State.reward is not None:
                 break
@@ -197,7 +203,7 @@ def MCTS(startB:ndarray, SNmap:defaultdict, c:float = 2**0.5, iterations:float =
                 [State.Qs[a] + c * (max(1e-3, log(State.state_visits)) / State.visits[a])**0.5
                  for a in State.actions])]
             
-            print(State.strB, UCB, ucbv)
+            # print(State.strB, State.depth, UCB, ucbv)
             
             # Add if unvisited Child node
             if State.children[UCB] == None:
