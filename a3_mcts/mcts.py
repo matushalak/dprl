@@ -4,7 +4,7 @@
 Connect Four is a board-size
 6 x 7, representation B \in \R^{6 X 7}
 '''
-from numpy import ndarray, unique, fliplr, array, where, zeros, mean, argmax, log
+from numpy import ndarray, unique, fliplr, array, where, zeros, mean, argmax, argmin, log
 from numpy.random import randint, choice
 from string import ascii_letters as ascl
 import argparse
@@ -56,7 +56,7 @@ def evaluate_board(B:ndarray):
         return winner # None if no winner (no connect 4), but still pieces left
 
 # this tree Class does the 1/3 of heavy lifting
-class TreeNode():
+class McNode():
     def __init__(self, 
                  B:ndarray,
                  parent = None): # that's how you identify root node!!!
@@ -72,24 +72,25 @@ class TreeNode():
         # only increase w back-up
         self.depth = 0 if not parent else parent.depth + 1
         # only for ultimate leaf nodes of MCT -1 / 0 / 1
-        self.reward = 0
-        self.state_visits = 0 # #times this state visited
+        self.reward = evaluate_board(B)
+        self.state_visits = 1e-6 # #times this state visited, small init for UCT calc
 
         # Q-values for each (current_state, possible_action) pair
         self.Qs = dict.fromkeys(self.actions, zeros(len(self.actions)))
-        # Visits for each (state, action) pair
-        self.visits = dict.fromkeys(self.actions, zeros(len(self.actions)))
-        # children are Treenodes themselves, self is parent of its children
+        # Visits for each (state, action) pair from this state, initialize with small value for UCT calc
+        self.visits = dict.fromkeys(self.actions, zeros(len(self.actions)) + 1e-6) 
+        # children are TreeNodes themselves, self is parent of its children
         self.children = dict.fromkeys(self.actions, None) # added on a need-to-add basis
 
     # Only Add child when needed, no need to generate self.children every time a node is accessed
-    def add_child(self, action:int) -> 'TreeNode':
+    def add_child(self, action:int) -> 'McNode':
         assert self.player in (1,2), 'Needs to be either player 1 or player 2!!!'
         B_new:ndarray = self.board.copy()
         B_new[where(B_new[:,action] == 0)[0][-1], 
               action] = self.player
         # child node
-        ChildNode = TreeNode(B_new, self) # self is a Parent
+        ChildNode = McNode(B_new, self) # self is a Parent
+        # action that created you
         ChildNode.parent_move = action # can call this up later
         self.children[action] = ChildNode
         return ChildNode # for use outside
@@ -134,13 +135,18 @@ class TreeNode():
                 return ValueError('Should always be draw / win / loss')
 
 
-# TODO: finish
 # this MCTS function does 2/3 of heavy lifting
-def MCTS(startB:ndarray, c:float = 2**0.5):
+def MCTS(startB:ndarray, SNmap:defaultdict, c:float = 2**0.5, iterations:float = 1e3
+         ) -> tuple[int, defaultdict]:
     '''
     Main function performing Monte Carlo Tree Search Algorithm 
     with Upper Confidence Trees (UCT) & min-max algorithm to consider playing optimal oponent
 
+    XXX Run this function for every move!!! XXX
+    returns:
+        tuple(bests move based on #iterations (int); 
+              *updated* SNmap with all the nodes ever encountered)
+    ----------------------
     1) Selection:
         - on nodes previously seen, choose action according to UCB rule 
         (apply on each previously seen node, balances exploration & exploitation)
@@ -162,62 +168,69 @@ def MCTS(startB:ndarray, c:float = 2**0.5):
         - if oponent actions kept negative: use max(p1)-min(p2) approach! 
             -> max reward for worst-case scenario
     '''
-    # So that  no error thrown if new board state indexed
-    # stores hashable reference to every possible state (which has its depth, children, etc.)
-    state_node_map = defaultdict(lambda: None)
+    # get this from the board
     sB = string_board(startB)
-    # store possible board configurations in state_node_map
-    StartState:TreeNode = TreeNode(startB)
-    state_node_map[sB] = StartState
-
-    # Starting case - expand all children, and use average of 5 rollout rewards for initial Q-values
-    for action in StartState.actions:
-        # if unexplored action from root node
-        if StartState.visits[action] == 0:
-            Ch:TreeNode = StartState.add_child(action)
-            state_node_map[Ch.strB] = Ch
-            # random rollout reward from (x,a)->initial estimate of Q(x,a) == here x.Q[a] 
-            StartState.Qs[action] += mean([Ch.rollout() for _ in 5]) # average of 5 random rollouts, for more accurate initial Q-vals
-            # n(x, a) == here x.n[a]
-            StartState.visits[action] += 1
-
-            # N(x) == x.N
-            Ch.state_visits += 1
-            StartState.state_visits += 1
+    # first try to access the state from previous simulations
+    if SNmap[sB] is not None:
+        StartState:McNode = SNmap[sB]
+    # new unexplored board position
+    else:
+        StartState:McNode = McNode(startB)
+        # stores hashable reference to every possible state (which has its depth, children, etc.)
+        # allows us to reuse previously built tree
+        SNmap[sB] = StartState
 
     # in MCTS - AFTER Backpropagation: Always start again at root Node!
-    State : TreeNode = StartState
-    while True:
-        # Terminal node, no point in looking at its actions
-        if State.reward != 0:
-            break
-        
-        # UCB(x, a) = argmax_a{ Q(x,a) + c. √[ln(x.state_visits) / (x.visits[action])]
-        UCB = argmax([State.Qs[a] + c * (log(State.state_visits) / State.visits[action])**0.5
-                      for a in State.actions])
-        
-        # TODO complete this logic -> what to do when leaf node(add child) vs not leaf node (continue into next state in while loop)
-        # Continue onto child with highest UCB
-        State = State.children[State.actions[UCB]]
+    for _ in iterations: # 1000 iterations for each move
+        State : McNode = StartState
+        path:list[McNode] = [State]
+        while True:
+            # Leaf Node
+            if State.reward is not None:
+                break
 
+            # Minimax approach (Maximizes for player 1 nodes, Minimizes for player 2 nodes)
+            minimax:function = argmax if State.player == 1 else argmin
+            
+            # UCB(x, a) = argmax_a{ Q(x,a) + c. √[ln(x.state_visits) / (x.visits[action])]
+            # will weigh unexplored options more initially because of visit initialization w small number
+            # UCB here is the action chosen
+            UCB:int = State.actions[minimax(
+                [State.Qs[a] + c * abs(log(State.state_visits) / State.visits[a])**0.5
+                 for a in State.actions])]
+            
+            # Add if unvisited Child node
+            if State.children[UCB] is None:
+                Ch = State.add_child(UCB)
+                SNmap[Ch.strB] = Ch
+                State = Ch
+            # Continue onto child with highest UCB, if visited
+            else:
+                State = State.children[UCB]
 
-        breakpoint()
+            # path we are following in this iteration, will use to backpropagate along this path
+            path.append(State)
 
-        # for Ch in State.children:
-        #     r = Ch.rollout
-        #     Node = Ch
-        #     # Backup up to root node, Q-value of root note not really meaningful
-        #     while Node.parent is not None:
-        #         Node.visits += 1
-                    
-        # else:
-        #     sB = Node.strB
-        #     B = Node.board
-        #     if state_node_map[sB] is None:
-        #         state_node_map[sB] = TreeNode(B)
-        #         State = state_node_map[sB]
+            # restart at Root Node
+            # Unvisited Node
+            if all(State.children == None):
+                break
+   
+        # Immediate Reward if terminal node, else Rollout
+        r = State.reward if State.reward is not None else State.rollout()
+        for Step in path:
+            Step.state_visits += 1
 
-        # pass T
+            if Step.parent is not None:
+                # add 1 visit to action that created you
+                Step.parent.visits[Step.parent_move] += 1
+                # incremental average - converges to true average
+                Step.parent.Qs[Step.parent_move] += (r - Step.parent.Qs[Step.parent_move] # adjustment toward new reward
+                                                        ) / Step.parent.visits[Step.parent_move] # diminishing updates over time
+    else:
+        minimax:function = max if StartState.player == 1 else min
+        return minimax(StartState.visits.items(), key = lambda x,y: y)[0], SNmap
+
 
 
 def parse_args():
