@@ -327,7 +327,7 @@ def game(start:ndarray, opponent:str, symbols:dict[int:str], PRINT:bool = False)
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-sym', nargs='+', type = str, default = ['🍎','⚽️'])
+    parser.add_argument('-sym', nargs='+', type = str, default = ['🤖','🤠'])
     parser.add_argument('-mode', type = str, default='random')
     parser.add_argument('-board', type = str, default='a3')
     parser.add_argument('-nsim', type = int, default=100)
