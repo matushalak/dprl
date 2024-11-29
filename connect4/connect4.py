@@ -23,18 +23,13 @@ def play(grid_, column, player=None):
     else:
         raise Exception(f"Error: Column {column} is full")
 
-    # Debugging: Log the move and grid state
-    print(f"Player {player} plays in column {column}")
-    print(grid)
-
+    # Check for a winner
     if has_won(grid, player, row, column):
-        print(f"Player {player} wins!")
-        return grid, 1 if player == 1 else -1
+        return grid, player  # Return the player who won
     elif not any(can_play(grid, col) for col in range(grid.shape[1])):  # Draw
-        print("Game ends in a draw.")
         return grid, 0
     else:
-        return grid, 0
+        return grid, 0  # Game continues
 
 def random_opponent_move(grid):
     """Choose a random valid move for the opponent."""
@@ -55,39 +50,39 @@ def has_won(grid, player, row, column):
     """
     Check if the player has won after placing a piece.
     """
-    player += 1
-    grid += 1
-    row_str = ''.join(grid[row, :].astype(str).tolist())
-    col_str = ''.join(grid[:, column].astype(str).tolist())
-    up_diag_str = ''.join(np.diagonal(grid, offset=(column - row)).astype(str).tolist())
-    down_diag_str = ''.join(np.diagonal(np.rot90(grid), offset=-grid.shape[1] + (column + row) + 1).astype(str).tolist())
-    grid -= 1
+    def check_direction(delta_row, delta_col):
+        count = 1
+        for direction in [1, -1]:
+            r, c = row, column
+            while True:
+                r += direction * delta_row
+                c += direction * delta_col
+                if 0 <= r < grid.shape[0] and 0 <= c < grid.shape[1]:
+                    if grid[r, c] == player:
+                        count += 1
+                    else:
+                        break
+                else:
+                    break
+        return count >= 4
 
-    victory_pattern = str(player) * 4
-    if victory_pattern in row_str:
-        print(f"Win detected in row {row}.")
-        return True
-    if victory_pattern in col_str:
-        print(f"Win detected in column {column}.")
-        return True
-    if victory_pattern in up_diag_str:
-        print(f"Win detected in upward diagonal.")
-        return True
-    if victory_pattern in down_diag_str:
-        print(f"Win detected in downward diagonal.")
-        return True
-
-    return False
+    # Check all directions
+    return (
+        check_direction(0, 1) or  # Horizontal
+        check_direction(1, 0) or  # Vertical
+        check_direction(1, 1) or  # Diagonal up-right
+        check_direction(1, -1)    # Diagonal up-left
+    )
 
 def get_player_to_play(grid):
     """Determine which player's turn it is."""
-    player_1 = 0.5 * np.abs(np.sum(grid - 1))
-    player_2 = 0.5 * np.sum(grid + 1)
-    return 1 if player_1 > player_2 else -1
+    num_player1 = np.count_nonzero(grid == 1)
+    num_player_minus1 = np.count_nonzero(grid == -1)
+    return 1 if num_player1 <= num_player_minus1 else -1
 
 def to_state(grid):
     """Convert the grid to a string representation for MCTS."""
-    grid += 1
-    res = ''.join(grid.astype(str).flatten().tolist())
-    grid -= 1
-    return res
+    return ''.join(grid.flatten().astype(str).tolist())
+
+
+
