@@ -26,6 +26,7 @@ def string_board(B:ndarray, symbols:dict[int:str, int:str] = {0:'  ', 1:'🍎', 
     # clear previous output in terminal
     os.system('clear')
     print(PrB, end='\r')
+    time.sleep(.25)
     return string_board #hashable board representation
 
 
@@ -134,7 +135,7 @@ class McNode():
 
 
 # this MCTS function does 2/3 of heavy lifting
-def MCTS(startB:ndarray, SNmap:defaultdict[str:McNode|None], c:float = 2**0.5, iterations:float = 3e3
+def MCTS(startB:ndarray, SNmap:defaultdict[str:McNode|None], c:float = 2**0.5, iterations:float = 1e3
          ) -> tuple[int, defaultdict]:
     '''
     Main function performing Monte Carlo Tree Search Algorithm 
@@ -167,8 +168,7 @@ def MCTS(startB:ndarray, SNmap:defaultdict[str:McNode|None], c:float = 2**0.5, i
             -> max reward for worst-case scenario
     '''
     # get this from the board
-    # sB = ''.join([str(n) for n in startB.ravel()])
-    sB = string_board(startB)
+    sB = ''.join([str(n) for n in startB.ravel()])
 
     # first try to access the state from previous simulations
     if SNmap[sB] is not None:
@@ -240,8 +240,8 @@ def MCTS(startB:ndarray, SNmap:defaultdict[str:McNode|None], c:float = 2**0.5, i
                 Step.parent.Qs[Step.parent_move] += (r - Step.parent.Qs[Step.parent_move] # adjustment toward new reward
                                                         ) / Step.parent.visits[Step.parent_move] # diminishing updates over time
     else:
-        if State.reward is not None:
-            return State.reward, State.board, SNmap
+        if StartState.reward is not None:
+            return StartState.reward, StartState.board, SNmap
         else:
             # need to get most visited, minimax already reflected in the UCB rule!!!
             best_action = max(StartState.visits.items(), key = lambda item: item[1])[0]
@@ -250,7 +250,6 @@ def MCTS(startB:ndarray, SNmap:defaultdict[str:McNode|None], c:float = 2**0.5, i
             # return best_action, SNmap
             
             # Return board corresponding to best action, tree map
-            
             return  StartState.children[best_action].reward, StartState.children[best_action].board, SNmap
             
 def game(start:ndarray, opponent:str = 'random'):
@@ -260,11 +259,10 @@ def game(start:ndarray, opponent:str = 'random'):
     B :ndarray = start
     
     while winner is None:
+        sB = string_board(B)
         match opponent:
             case 'random':
-                # sB = string_board(B)
-                # time.sleep(0.25)
-                sB = ''.join([str(n) for n in B.ravel()])
+                # sB = ''.join([str(n) for n in B.ravel()])
                 # player w more less pieces' turn, if equal pieces, P1 starts
                 try:
                     turn : int = tree_dict[sB].player
@@ -321,7 +319,8 @@ if __name__ == '__main__':
     B = hardcodedB
 
     # play game
-    w, winB, Tree = game(B)
-    # print(winB)
+    w, winB, Tree = game(B, opponent = 'random')
     # w, winB, Tree = game(B, opponent='optimal')
     # w, winB, Tree = game(B, opponent='human')
+    
+    # print(winB)
