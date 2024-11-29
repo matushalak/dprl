@@ -135,7 +135,8 @@ class McNode():
 
 
 # this MCTS function does 2/3 of heavy lifting
-def MCTS(startB:ndarray, SNmap:defaultdict[str:McNode|None], c:float = 2**0.5, iterations:float = 3e3
+# XXX How many moves need to look ahead analysis
+def MCTS(startB:ndarray, SNmap:defaultdict[str:McNode|None], c:float = 2**0.5, iterations:float = 50#3e3
          ) -> tuple[int, defaultdict]:
     '''
     Main function performing Monte Carlo Tree Search Algorithm 
