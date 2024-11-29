@@ -43,7 +43,7 @@ if __name__ == '__main__':
 
     # Offline training
     print("Training MCTS...")
-    for _ in range(1000):  # Adjust the number of iterations as needed
+    for _ in range(3000):  # Adjust the number of iterations as needed
         mcts = train_mcts_once(mcts)
     print("Training finished.")
 
