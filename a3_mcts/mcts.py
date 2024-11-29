@@ -4,13 +4,14 @@
 Connect Four is a board-size
 6 x 7, representation B in R^{6 X 7}
 '''
-from numpy import ndarray, unique, fliplr, array, where, zeros, mean, argmax, argmin, log
+from numpy import ndarray, unique, fliplr, array, where, zeros, mean, argmax, argmin, log, flipud
 from numpy.random import randint, choice
 from string import ascii_letters as ascl
 import argparse
 from collections import defaultdict
 import os
 import time
+import multiprocessing
 
 def string_board(B:ndarray, symbols:dict[int:str, int:str] = {0:'  ', 1:'🍎', 2:'⚽️'}) -> str:
     # printed board with symbols
@@ -26,35 +27,34 @@ def string_board(B:ndarray, symbols:dict[int:str, int:str] = {0:'  ', 1:'🍎', 
     # clear previous output in terminal
     os.system('clear')
     print(PrB, end='\r')
-    time.sleep(.25)
     return string_board #hashable board representation
 
-
-def evaluate_board(B:ndarray):
-    # only loop through pivots and look at 4x4 slices of B
-    pivots = ([1,2,3],[1,2,3,4])
-    winner = None
-    for ir in pivots[0]:
-        for ic in pivots[1]:
-            # upper end of slice is EXCLUSIVE!, want 4 x 4 slice!
-            Bslice = B[ir-1:ir+3,
-                       ic-1:ic+3]
-            
-            unique_rows = [unique(row).tolist() for row in Bslice]
-            unique_cols = [unique(col).tolist() for col in Bslice.T] # transpose to get cols
-            rows = min(unique_rows ,key = len)
-            cols = min(unique_cols, key = len)
-            diag = unique(Bslice.diagonal())
-            antidiag = unique(fliplr(Bslice).diagonal())
-
-            sub_res = min([rows, cols, diag, antidiag], key = len)
-            if len(sub_res) == 1 and sub_res[0] != 0:
-                winner = sub_res[0]
-                return winner
+# ne    
+def evaluate_board(B: ndarray):
+    rows, cols = B.shape
+    # Check all positions
+    for i in range(rows):
+        for j in range(cols):
+            if B[i, j] == 0:
+                continue  # Skip empty cells
+            player = B[i, j]
+            # Check horizontal (right)
+            if j + 3 < cols and all(B[i, j+k] == player for k in range(4)):
+                return player
+            # Check vertical (down)
+            if i + 3 < rows and all(B[i+k, j] == player for k in range(4)):
+                return player
+            # Check diagonal (down-right)
+            if i + 3 < rows and j + 3 < cols and all(B[i+k, j+k] == player for k in range(4)):
+                return player
+            # Check anti-diagonal (down-left)
+            if i + 3 < rows and j - 3 >= 0 and all(B[i+k, j-k] == player for k in range(4)):
+                return player
+    # Check for draw (full board)
     if not (B == 0).any():
-        return 0 # draw if no free pieces left
-    else:
-        return winner # None if no winner (no connect 4), but still pieces left
+        return 0  # Draw
+    return None  # No winner yet    
+
 
 # this tree Class does the 1/3 of heavy lifting
 class McNode():
@@ -74,7 +74,7 @@ class McNode():
         self.depth = 0 if not parent else parent.depth + 1
         # only for ultimate leaf nodes of MCT -1 / 0 / 1
         self.reward = evaluate_board(B)
-        self.state_visits = 0 # #times this state visited, small init for UCT calc
+        self.state_visits = 1e-1 # #times this state visited, small init for UCT calc
 
         # Q-values for each (current_state, possible_action) pair
         self.Qs = {a:0 for a in self.actions}
@@ -135,7 +135,7 @@ class McNode():
 
 
 # this MCTS function does 2/3 of heavy lifting
-def MCTS(startB:ndarray, SNmap:defaultdict[str:McNode|None], c:float = 2**0.5, iterations:float = 1e3
+def MCTS(startB:ndarray, SNmap:defaultdict[str:McNode|None], c:float = 2**0.5, iterations:float = 3e3
          ) -> tuple[int, defaultdict]:
     '''
     Main function performing Monte Carlo Tree Search Algorithm 
@@ -201,7 +201,9 @@ def MCTS(startB:ndarray, SNmap:defaultdict[str:McNode|None], c:float = 2**0.5, i
             # will weigh unexplored options more initially because of visit initialization w small number
             # UCB here is the action chosen
             UCB:int = State.actions[minimax(ucbv :=
-                [State.Qs[a] + c * (max(1e-1, log(State.state_visits)) / State.visits[a])**0.5
+                [State.Qs[a] + c * (
+                    (log(State.state_visits) if log(State.state_visits) > 0 else -log(State.state_visits)
+                     ) / State.visits[a])**0.5
                  for a in State.actions])]
             
             # print(State.strB, State.depth, UCB, ucbv)
@@ -252,17 +254,21 @@ def MCTS(startB:ndarray, SNmap:defaultdict[str:McNode|None], c:float = 2**0.5, i
             # Return board corresponding to best action, tree map
             return  StartState.children[best_action].reward, StartState.children[best_action].board, SNmap
             
-def game(start:ndarray, opponent:str = 'random'):
+def game(start:ndarray, opponent:str, symbols:dict[int:str], PRINT:bool = False):
     # Tree dictionary from which we re-use previously seen nodes
     tree_dict : defaultdict[str: McNode | None] = defaultdict(lambda: None)
     winner = evaluate_board(start)
     B :ndarray = start
-    
+    letter_to_move:dict = {letter:i for i, letter in enumerate(ascl[:B.shape[1]])}
+
     while winner is None:
-        sB = string_board(B)
+        if PRINT:
+            sB = string_board(B, symbols)
+            time.sleep(.25)
+        else:
+            sB = ''.join([str(n) for n in B.ravel()])
         match opponent:
             case 'random':
-                # sB = ''.join([str(n) for n in B.ravel()])
                 # player w more less pieces' turn, if equal pieces, P1 starts
                 try:
                     turn : int = tree_dict[sB].player
@@ -274,7 +280,7 @@ def game(start:ndarray, opponent:str = 'random'):
                     rand_move = choice(tree_dict[sB].actions) # random action choice
                     # still run MCTS, but dont'update board & winner based on optimal simulation, 
                     # just update the tree
-                    _, _, tree_dict = MCTS(B, tree_dict) 
+                    # _, _, tree_dict = MCTS(B, tree_dict) 
                     if tree_dict[sB].children[rand_move] is None:
                         tree_dict[sB].add_child(rand_move)
                     winner, B = tree_dict[sB].children[rand_move].reward, tree_dict[sB].children[rand_move].board
@@ -284,20 +290,72 @@ def game(start:ndarray, opponent:str = 'random'):
                 winner, B, tree_dict = MCTS(B, tree_dict) 
 
             case 'human':
-                pass
-        
-        if winner is not None:
-            _ = string_board(B)
-            print(f'WinnerID:{winner} -> {d[winner]}')
-            return winner, B, tree_dict
+                try:
+                    turn : int = tree_dict[sB].player
+                except AttributeError:
+                    turn = 1
+                if turn == 1:
+                    winner, B, tree_dict = MCTS(B, tree_dict) 
+                else: # P1 turn
+                    # user input
+                    while True: 
+                        try:
+                            p_move:str = input('Choose the column (a-g) to place your stone:').lower()
+                            assert p_move in ascl[:B.shape[1]]
+                            print(f'You chose column {p_move}!')
+                            break
+                        except AssertionError:
+                            print('You must choose a column letter (a-g)!!!')
+                    # MCTS
+                    # _, _, tree_dict = MCTS(B, tree_dict) 
+                    # user-move
+                    p_move : int = letter_to_move[p_move]
+                    if tree_dict[sB].children[p_move] is None:
+                        tree_dict[sB].add_child(p_move)
+                    winner, B = tree_dict[sB].children[p_move].reward, tree_dict[sB].children[p_move].board
+            
+            case _:
+                raise ValueError('You need to choose between "random"|"optimal"|"human" modes')
+                                           
+    if winner is not None:
+        if PRINT:
+            _ = string_board(B, symbols)
+            print(f'WinnerID:{winner} -> {symbols[winner] if winner > 0 else 'Draw'}') 
+        return winner, B, tree_dict
     
 
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('-sym', nargs='+', type = str, default = ['🍎','⚽️'])
+    parser.add_argument('-mode', type = str, default='random')
+    parser.add_argument('-board', type = str, default='a3')
+    parser.add_argument('-nsim', type = int, default=100)
+    # TODO:incorporate
+    parser.add_argument('-starting_player', type = str, default='random')
     return parser.parse_args()
 
 
+def simulate(game_args:tuple[ndarray, str, dict[int:str]]):
+    B, mode, symb= game_args
+    w, _, _ = game(B, mode, symb)
+    return w
+def parellel_simulate(B:ndarray, mode:str, symbols:dict[int:str], nsim:int = 50
+                      ) -> list[int]:
+    # for each simulation same args
+    each_sim_args = [(B, mode, symbols) for _ in range(nsim)]
+
+    with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
+        results = pool.map(simulate, each_sim_args)
+    
+    # Aggregate results
+    draw = results.count(0)
+    ai = results.count(1)
+    enemy = results.count(2)
+    
+    return [draw, ai, enemy]
+
+
+# TODO: handle p2 going first
 if __name__ == '__main__':
     args = parse_args()
     symbols = [' '+s if s.isalnum() else s for s in args.sym]
@@ -311,16 +369,24 @@ if __name__ == '__main__':
                         [1, 2, 2, 2, 0, 1, 0],
                         [2, 2, 2, 1, 0, 1, 0],
                         [1, 1, 2, 1, 0, 2, 0]])
+    
     # for the real game
     zeroB = zeros((6,7), dtype=int) 
-    # for quicktesting & evaluation
-    # B = randint(0, 3, (6,7), dtype=int) 
-    # B = zeroB
-    B = hardcodedB
+    # TODO: add option to pass in board-string and start from that position
+    match args.board:
+        case 'empty':
+            B = zeroB
+        case 'a3':         
+            B = hardcodedB
+        case _:
+            raise ValueError('Choose between starting with "empty" board or "a3" board for assignment 3')
 
     # play game
-    w, winB, Tree = game(B, opponent = 'random')
-    # w, winB, Tree = game(B, opponent='optimal')
-    # w, winB, Tree = game(B, opponent='human')
-    
-    # print(winB)
+    w, winB, Tree = game(B, opponent=args.mode, symbols = d, PRINT=True)
+
+    # SIMULATION
+    if args.mode in {'random', 'optimal'}:
+        nsim = args.nsim
+        results = parellel_simulate(B, args.mode, d, nsim)
+        
+        print(f'Game Mode: {args.mode}  Starting Board: {args.board}   Simulations: {nsim}\nAI wins:{100*results[1]/nsim}% Enemy wins:{100*results[2]/nsim}% Draws: {100*results[0]/nsim}%')
