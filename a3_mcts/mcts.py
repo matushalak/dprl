@@ -2,7 +2,7 @@
 # Monte-Carlo Tree Search Connect Four Game
 '''
 Connect Four is a board-size
-6 x 7, representation B \in \R^{6 X 7}
+6 x 7, representation B in R^{6 X 7}
 '''
 from numpy import ndarray, unique, fliplr, array, where, zeros, mean, argmax, argmin, log
 from numpy.random import randint, choice
@@ -78,7 +78,7 @@ class McNode():
         # Q-values for each (current_state, possible_action) pair
         self.Qs = {a:0 for a in self.actions}
         # Visits for each (state, action) pair from this state, initialize with small value for UCT calc
-        self.visits = {a:1e-5 for a in self.actions}
+        self.visits = {a:1e-2 for a in self.actions}
         # children are TreeNodes themselves, self is parent of its children
         self.children = {a:None for a in self.actions} # added on a need-to-add basis
 
@@ -122,7 +122,6 @@ class McNode():
             move = choice(self.available_moves(rollB))
             rollB[where(rollB[:,move] == 0)[0][-1], move] = player
 
-        # string_board(rollB)
         match winner:
             case 0: # draw
                 return 0
@@ -135,7 +134,7 @@ class McNode():
 
 
 # this MCTS function does 2/3 of heavy lifting
-def MCTS(startB:ndarray, SNmap:defaultdict, c:float = 2**0.5, iterations:float = 1e3
+def MCTS(startB:ndarray, SNmap:defaultdict[str:McNode|None], c:float = 2**0.5, iterations:float = 3e3
          ) -> tuple[int, defaultdict]:
     '''
     Main function performing Monte Carlo Tree Search Algorithm 
@@ -168,7 +167,9 @@ def MCTS(startB:ndarray, SNmap:defaultdict, c:float = 2**0.5, iterations:float =
             -> max reward for worst-case scenario
     '''
     # get this from the board
+    # sB = ''.join([str(n) for n in startB.ravel()])
     sB = string_board(startB)
+
     # first try to access the state from previous simulations
     if SNmap[sB] is not None:
         StartState:McNode = SNmap[sB]
@@ -184,10 +185,10 @@ def MCTS(startB:ndarray, SNmap:defaultdict, c:float = 2**0.5, iterations:float =
         State : McNode = StartState
         path:list[McNode] = [State]
         while True:
-            # visualize
-            if sim == int(iterations)-1:
-                _ = string_board(State.board)
-                time.sleep(0.25)
+            # visualize Monte Carlo Tree 'thinking' (running simulations & figuring out best move)
+            # if sim == int(iterations)-1:
+            #     _ = string_board(State.board)
+            #     time.sleep(0.25)
             
             # Terminal Node -> can use backpropagation of direct rewards straight away
             if State.reward is not None:
@@ -200,7 +201,7 @@ def MCTS(startB:ndarray, SNmap:defaultdict, c:float = 2**0.5, iterations:float =
             # will weigh unexplored options more initially because of visit initialization w small number
             # UCB here is the action chosen
             UCB:int = State.actions[minimax(ucbv :=
-                [State.Qs[a] + c * (max(1e-3, log(State.state_visits)) / State.visits[a])**0.5
+                [State.Qs[a] + c * (max(1e-1, log(State.state_visits)) / State.visits[a])**0.5
                  for a in State.actions])]
             
             # print(State.strB, State.depth, UCB, ucbv)
@@ -219,16 +220,16 @@ def MCTS(startB:ndarray, SNmap:defaultdict, c:float = 2**0.5, iterations:float =
             try:
                 if SNmap[sB] is None:
                     SNmap[sB] = State
-                    print(f'{sim} simulation done')
+                    # print(f'{sim} simulation done')
                     break
-                # if {*State.children.values()} == {None} and State.reward is None:
-                #     break
 
             except AttributeError:
                 breakpoint()
    
         # Immediate Reward if terminal node, else Rollout
-        r = State.reward if State.reward is not None else State.rollout()
+        # State.reward is WHO IS THE WINNER, NOT ACTUAL REWARD!!!!
+        reward_map = {0:0,1:1,2:-1}
+        r = reward_map[State.reward] if State.reward is not None else State.rollout()
         for Step in path[::-1]:
             Step.state_visits += 1
 
@@ -239,11 +240,59 @@ def MCTS(startB:ndarray, SNmap:defaultdict, c:float = 2**0.5, iterations:float =
                 Step.parent.Qs[Step.parent_move] += (r - Step.parent.Qs[Step.parent_move] # adjustment toward new reward
                                                         ) / Step.parent.visits[Step.parent_move] # diminishing updates over time
     else:
-        breakpoint()
-        minimax:function = max if StartState.player == 1 else min
-        return minimax(StartState.visits.items(), key = lambda item: item[1])[0], SNmap
+        if State.reward is not None:
+            return State.reward, State.board, SNmap
+        else:
+            # need to get most visited, minimax already reflected in the UCB rule!!!
+            best_action = max(StartState.visits.items(), key = lambda item: item[1])[0]
+            
+            # Return best action, tree map
+            # return best_action, SNmap
+            
+            # Return board corresponding to best action, tree map
+            
+            return  StartState.children[best_action].reward, StartState.children[best_action].board, SNmap
+            
+def game(start:ndarray, opponent:str = 'random'):
+    # Tree dictionary from which we re-use previously seen nodes
+    tree_dict : defaultdict[str: McNode | None] = defaultdict(lambda: None)
+    winner = evaluate_board(start)
+    B :ndarray = start
+    
+    while winner is None:
+        match opponent:
+            case 'random':
+                # sB = string_board(B)
+                # time.sleep(0.25)
+                sB = ''.join([str(n) for n in B.ravel()])
+                # player w more less pieces' turn, if equal pieces, P1 starts
+                try:
+                    turn : int = tree_dict[sB].player
+                except AttributeError:
+                    turn = 1
+                if turn == 1:
+                    winner, B, tree_dict = MCTS(B, tree_dict) 
+                else: # random P2 turn
+                    rand_move = choice(tree_dict[sB].actions) # random action choice
+                    # still run MCTS, but dont'update board & winner based on optimal simulation, 
+                    # just update the tree
+                    _, _, tree_dict = MCTS(B, tree_dict) 
+                    if tree_dict[sB].children[rand_move] is None:
+                        tree_dict[sB].add_child(rand_move)
+                    winner, B = tree_dict[sB].children[rand_move].reward, tree_dict[sB].children[rand_move].board
+                
+            case 'optimal':
+                # resulting child node becomes root node at next move
+                winner, B, tree_dict = MCTS(B, tree_dict) 
 
-
+            case 'human':
+                pass
+        
+        if winner is not None:
+            _ = string_board(B)
+            print(f'WinnerID:{winner} -> {d[winner]}')
+            return winner, B, tree_dict
+    
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -271,14 +320,8 @@ if __name__ == '__main__':
     # B = zeroB
     B = hardcodedB
 
-    # Tree dictionary from which we re-use previously seen nodes
-    tree_dict = defaultdict(lambda: None)
-
-    # Initial State
-    move, tree_dict = MCTS(B, tree_dict)
-    winner = evaluate_board(B)
-
-    if winner:
-        print(f'WinnerID:{winner} -> {d[winner]}')
-    else:
-        print('No winner yet!')
+    # play game
+    w, winB, Tree = game(B)
+    # print(winB)
+    # w, winB, Tree = game(B, opponent='optimal')
+    # w, winB, Tree = game(B, opponent='human')
