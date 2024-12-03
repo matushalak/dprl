@@ -136,8 +136,9 @@ class McNode():
 
 # this MCTS function does 2/3 of heavy lifting
 # XXX How many moves need to look ahead analysis
-def MCTS(startB:ndarray, SNmap:defaultdict[str:McNode|None], c:float = 2**0.5, iterations:float = 50#3e3
-         ) -> tuple[int, defaultdict]:
+# TODO: integrate random opponent (inefficient) option nicely
+def MCTS(startB:ndarray, SNmap:defaultdict[str:McNode|None], c:float = 2**0.5, iterations:float = 3e3
+         ,random_opp:bool = True) -> tuple[int, defaultdict]:
     '''
     Main function performing Monte Carlo Tree Search Algorithm 
     with Upper Confidence Trees (UCT) & min-max algorithm to consider playing optimal oponent
@@ -206,6 +207,10 @@ def MCTS(startB:ndarray, SNmap:defaultdict[str:McNode|None], c:float = 2**0.5, i
                     (log(State.state_visits) if log(State.state_visits) > 0 else -log(State.state_visits)
                      ) / State.visits[a])**0.5
                  for a in State.actions])]
+            
+            # enemy move is random transition
+            if random_opp and State.player == 2:
+                UCB = choice(State.actions)
             
             # print(State.strB, State.depth, UCB, ucbv)
             
