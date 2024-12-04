@@ -9,6 +9,10 @@ from numpy.random import randint, choice
 from string import ascii_letters as ascl
 import argparse
 from collections import defaultdict
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+from pandas import DataFrame, MultiIndex
 import os
 import time
 import multiprocessing
@@ -137,8 +141,8 @@ class McNode():
 # this MCTS function does 2/3 of heavy lifting
 # XXX How many moves need to look ahead analysis
 # TODO: integrate random opponent (inefficient) option nicely
-def MCTS(startB:ndarray, SNmap:defaultdict[str:McNode|None], c:float = 2**0.5, iterations:float = 3e3
-         ,random_opp:bool = True) -> tuple[int, defaultdict]:
+def MCTS(startB:ndarray, SNmap:defaultdict[str:McNode|None], c:float = 2**0.5, iterations:float = 50,
+         random_opp:bool = True) -> tuple[int, defaultdict]:
     '''
     Main function performing Monte Carlo Tree Search Algorithm 
     with Upper Confidence Trees (UCT) & min-max algorithm to consider playing optimal oponent
@@ -260,7 +264,8 @@ def MCTS(startB:ndarray, SNmap:defaultdict[str:McNode|None], c:float = 2**0.5, i
             # Return board corresponding to best action, tree map
             return  StartState.children[best_action].reward, StartState.children[best_action].board, SNmap
             
-def game(start:ndarray, opponent:str, symbols:dict[int:str], PRINT:bool = False):
+def game(start:ndarray, opponent:str, symbols:dict[int:str], PRINT:bool = False, 
+         iter_per_turn:int = 1000, random_enemy_search:bool = True):
     # Tree dictionary from which we re-use previously seen nodes
     tree_dict : defaultdict[str: McNode | None] = defaultdict(lambda: None)
     winner = evaluate_board(start)
@@ -273,16 +278,19 @@ def game(start:ndarray, opponent:str, symbols:dict[int:str], PRINT:bool = False)
             time.sleep(.25)
         else:
             sB = ''.join([str(n) for n in B.ravel()])
+        
+        # player w more less pieces' turn, if equal pieces, P1 starts
+        try:
+            turn : int = tree_dict[sB].player
+        except AttributeError:
+            turn = 1
+        # AI agent turn
+        if turn == 1:
+            winner, B, tree_dict = MCTS(B, tree_dict, 
+                                        iterations=iter_per_turn, random_opp=random_enemy_search)
         match opponent:
             case 'random':
-                # player w more less pieces' turn, if equal pieces, P1 starts
-                try:
-                    turn : int = tree_dict[sB].player
-                except AttributeError:
-                    turn = 1
-                if turn == 1:
-                    winner, B, tree_dict = MCTS(B, tree_dict) 
-                else: # random P2 turn
+                if turn == 2: # random P2 turn
                     rand_move = choice(tree_dict[sB].actions) # random action choice
                     # still run MCTS, but dont'update board & winner based on optimal simulation, 
                     # just update the tree
@@ -292,17 +300,13 @@ def game(start:ndarray, opponent:str, symbols:dict[int:str], PRINT:bool = False)
                     winner, B = tree_dict[sB].children[rand_move].reward, tree_dict[sB].children[rand_move].board
                 
             case 'optimal':
-                # resulting child node becomes root node at next move
-                winner, B, tree_dict = MCTS(B, tree_dict) 
+                if turn == 2:
+                    # resulting child node becomes root node at next move
+                    winner, B, tree_dict = MCTS(B, tree_dict, 
+                                                iterations=iter_per_turn, random_opp=False) # optimal opponent 
 
             case 'human':
-                try:
-                    turn : int = tree_dict[sB].player
-                except AttributeError:
-                    turn = 1
-                if turn == 1:
-                    winner, B, tree_dict = MCTS(B, tree_dict) 
-                else: # P1 turn
+                if turn == 2: # human player turn
                     # user input
                     while True: 
                         try:
@@ -330,35 +334,97 @@ def game(start:ndarray, opponent:str, symbols:dict[int:str], PRINT:bool = False)
         return winner, B, tree_dict
     
 
+########################
+# SIMULATION BLOCK
+def simulate(game_args:tuple[ndarray, str, dict[int:str], int, bool]):
+    B, mode, symb, ipm, nominimax = game_args
+    w, _, _ = game(B, mode, symb, iter_per_turn=ipm, random_enemy_search=nominimax)
+    return w
+def parellel_simulate(B:ndarray, mode:str, symbols:dict[int:str], nsim:int, ipm = 500, nominimax = True
+                      ) -> list[int]:
+    # for each simulation same args
+    each_sim_args = [(B, mode, symbols, ipm, nominimax) for _ in range(nsim)]
+    start = time.time()
+    with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
+        results = pool.map(simulate, each_sim_args)
+    end = time.time()
+    # Aggregate results
+    draw = results.count(0) / nsim
+    ai = results.count(1) / nsim
+    enemy = results.count(2) / nsim
+    
+    return [draw, ai, enemy, end-start]
+def investigate_convergence(boards:list[ndarray, ndarray], symb:dict,
+                            iterations_per_move:list[int],
+                            iterations_per_simulation:int) -> DataFrame:
+    start_time = time.time()
+    NOminimax = [False, True]
+    # Initialize the data structure
+    coldata = {
+        # draws, wins, losses, time
+        (iB, mnmx): zeros((len(iterations_per_move), 4))
+        for iB in range(len(boards))
+        for mnmx in [False, True]
+    }
+
+    # Fill in coldata with simulated data
+    # both for empty and hardcoded board
+    for iB, Brd in enumerate(boards):
+        for mnmx in NOminimax:
+            for row, ipm in enumerate(iterations_per_move):
+                coldata[(iB, mnmx)][row, :] = (res := parellel_simulate(Brd, mode='random', symbols=symb, nsim=iterations_per_simulation,ipm=ipm, nominimax=mnmx))
+                print((iB, ipm), ':', res)
+    
+    # Initialize the list to hold data
+    data = []
+
+    # Loop through coldata and construct rows for the DataFrame
+    for (group_idx, mode), array in coldata.items():  # `coldata` is your simulation data structure
+        group = "EB" if group_idx == 0 else "AB"  # Map 0 -> EB, 1 -> AB
+        mode_str = "mini" if not mode else "random"  # Map False -> mini, True -> random
+        
+        for row_idx, ipm in enumerate(iterations_per_move):  # Iterate over iterations per move
+            for metric_idx, metric in enumerate(["draw", "win", "loss", "time"]):  # Map array columns to metrics
+                value = array[row_idx, metric_idx]
+                data.append([ipm, group, mode_str, metric, value])  # Append a row of data
+
+    # Create the DataFrame directly
+    DF_long = DataFrame(data, columns=["Iterations per Move", "Group", "Mode", "Metric", "Value"])
+    DF_long.to_csv(f'mcts_simulation{iterations_per_simulation}_data.csv')
+    # Plotting example: Iterations per Move vs Value, grouped by Group and Mode
+    test_data = DF_long[(DF_long["Metric"] == "win")]
+    
+    print('Duration:', time.time() -start_time)
+
+    sns.lineplot(
+        data=test_data,
+        x="Iterations per Move",  # Former index
+        y="Value",  # Values to plot
+        hue="Group",  # EB or AB
+        style="Mode",  # mini or random
+        errorbar = 'sd',
+        markers = True,
+        dashes=False)
+    
+    plt.title("Performance Metrics by Group and Mode")
+    plt.tight_layout()
+    plt.savefig(f'mcts_simulation{iterations_per_simulation}_data.png', dpi = 500)
+    plt.show()
+########################
+
+
+
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('-sym', nargs='+', type = str, default = ['🤖','🤠'])
     parser.add_argument('-mode', type = str, default='random')
     parser.add_argument('-board', type = str, default='a3')
     parser.add_argument('-nsim', type = int, default=100)
+    parser.add_argument('-minimax', type = bool, default=False)
     # TODO:incorporate
     parser.add_argument('-starting_player', type = str, default='random')
+    parser.add_argument('-convergence', type = bool, default=False)
     return parser.parse_args()
-
-
-def simulate(game_args:tuple[ndarray, str, dict[int:str]]):
-    B, mode, symb= game_args
-    w, _, _ = game(B, mode, symb)
-    return w
-def parellel_simulate(B:ndarray, mode:str, symbols:dict[int:str], nsim:int = 50
-                      ) -> list[int]:
-    # for each simulation same args
-    each_sim_args = [(B, mode, symbols) for _ in range(nsim)]
-
-    with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
-        results = pool.map(simulate, each_sim_args)
-    
-    # Aggregate results
-    draw = results.count(0)
-    ai = results.count(1)
-    enemy = results.count(2)
-    
-    return [draw, ai, enemy]
 
 
 # TODO: handle p2 going first
@@ -388,11 +454,18 @@ if __name__ == '__main__':
             raise ValueError('Choose between starting with "empty" board or "a3" board for assignment 3')
 
     # play game
-    w, winB, Tree = game(B, opponent=args.mode, symbols = d, PRINT=True)
+    w, winB, Tree = game(B, opponent=args.mode, symbols = d, PRINT=True, random_enemy_search= not args.minimax)
+
+    # investigate convergence
+    if args.convergence:
+        # Iterations per move
+        ipm = [5, 25, 50, 100, 200, 500, 1000]
+        investigate_convergence([zeroB, hardcodedB], d, 
+                                iterations_per_move=ipm,
+                                iterations_per_simulation=args.nsim)
 
     # SIMULATION
-    if args.mode in {'random', 'optimal'}:
-        nsim = args.nsim
-        results = parellel_simulate(B, args.mode, d, nsim)
+    elif args.mode in {'random', 'optimal'}:
+        results = parellel_simulate(B, args.mode, d, args.nsim, nominimax= not args.minimax)
         
-        print(f'Game Mode: {args.mode}  Starting Board: {args.board}   Simulations: {nsim}\nAI wins:{100*results[1]/nsim}% Enemy wins:{100*results[2]/nsim}% Draws: {100*results[0]/nsim}%')
+        print(f'Game Mode: {args.mode}  Starting Board: {args.board}   Simulations: {args.nsim}\nAI wins:{100*results[1]}% Enemy wins:{100*results[2]}% Draws: {100*results[0]}%')
