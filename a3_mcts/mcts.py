@@ -188,6 +188,11 @@ def MCTS(startB:ndarray, SNmap:defaultdict[str:McNode|None], c:float = 2**0.5, i
 
     # in MCTS - AFTER Backpropagation: Always start again at root Node!
     for sim in range(int(iterations)): # 1000 iterations for each move
+        # TODO:
+        StartState.Qs # save to txt
+        # at what point does this stop increasing by a lot
+        # sim by StartState Qs
+
         State : McNode = StartState
         path:list[McNode] = [State]
         while True:
@@ -262,10 +267,13 @@ def MCTS(startB:ndarray, SNmap:defaultdict[str:McNode|None], c:float = 2**0.5, i
             # return best_action, SNmap
             
             # Return board corresponding to best action, tree map
+            # breakpoint()
+            # TODO: save to txt
+            print(StartState.Qs)
             return  StartState.children[best_action].reward, StartState.children[best_action].board, SNmap
             
 def game(start:ndarray, opponent:str, symbols:dict[int:str], PRINT:bool = False, 
-         iter_per_turn:int = 1000, random_enemy_search:bool = True):
+         iter_per_turn:int = 5000, random_enemy_search:bool = True):
     # Tree dictionary from which we re-use previously seen nodes
     tree_dict : defaultdict[str: McNode | None] = defaultdict(lambda: None)
     winner = evaluate_board(start)
@@ -333,6 +341,7 @@ def game(start:ndarray, opponent:str, symbols:dict[int:str], PRINT:bool = False,
             print(f'WinnerID:{winner} -> {symbols[winner] if winner > 0 else 'Draw'}') 
         return winner, B, tree_dict
     
+
 
 ########################
 # SIMULATION BLOCK
