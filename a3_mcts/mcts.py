@@ -140,7 +140,7 @@ class McNode():
 
 # this MCTS function does 2/3 of heavy lifting
 def MCTS(startB:ndarray, SNmap:defaultdict[str:McNode|None], c:float = 2**0.5, iterations:float = 50,
-         random_opp:bool = True) -> tuple[int, defaultdict]:
+         random_opp:bool = True, VISUALIZE:bool = False) -> tuple[int, defaultdict]:
     '''
     Main function performing Monte Carlo Tree Search Algorithm 
     with Upper Confidence Trees (UCT) & min-max algorithm to consider playing optimal oponent
@@ -185,18 +185,23 @@ def MCTS(startB:ndarray, SNmap:defaultdict[str:McNode|None], c:float = 2**0.5, i
         SNmap[sB] = StartState
 
     # need to manually do 2 times, once for empty board and once for assignment board
-    if not os.path.exists('tree_plot.csv'):
-        with open(f'tree_plot.csv', 'w') as tree_plot_file:
-                moves = ','.join(list(map(str, range(7))))
-                # add header
-                tree_plot_file.write('Node-Depth'+','+moves+'\n')
+    if VISUALIZE:
+        if not os.path.exists('tree_plot.csv'):
+            with open(f'tree_plot.csv', 'w') as tree_plot_file:
+                    moves = ','.join(list(map(str, range(7))))
+                    # add header
+                    tree_plot_file.write('Node-Depth'+','+moves+'\n')
+
+        # for convergence analysis
+        if not os.path.exists('convergence_plot.png'):
+            start_node_Qs = {a:zeros(iterations) for a in StartState.actions}
 
     # in MCTS - AFTER Backpropagation: Always start again at root Node!
     for sim in range(int(iterations)): # 1000 iterations for each move
-        # TODO:
-        # StartState.Qs # save to txt
-        # at what point does this stop increasing by a lot
-        # sim by StartState Qs
+        if VISUALIZE and not os.path.exists('convergence_plot.png'):
+            # convergence
+            for a in StartState.actions:
+                start_node_Qs[a][sim] = StartState.Qs[a]
 
         State : McNode = StartState
         path:list[McNode] = [State]
@@ -262,19 +267,30 @@ def MCTS(startB:ndarray, SNmap:defaultdict[str:McNode|None], c:float = 2**0.5, i
                 Step.parent.Qs[Step.parent_move] += (r - Step.parent.Qs[Step.parent_move] # adjustment toward new reward
                                                         ) / Step.parent.visits[Step.parent_move] # diminishing updates over time
     else:
-        # breakpoint()
-        # TODO: save to csv / txt
-        with open(f'tree_plot.csv', 'a', newline='') as tree_plot_file:
-                # In later nodes can have fewer actions but want full table
-                write_qs = []
-                for a in range(7):
-                    try:
-                        write_qs.append(str(StartState.Qs[a]))
-                    except KeyError:
-                        write_qs.append('NA')
-                
-                tree_plot_file.write(f'D{StartState.depth}' + ',' + ','.join(write_qs)+'\n')
-        
+        if VISUALIZE:
+            # visualization of route through tree
+            with open(f'tree_plot.csv', 'a', newline='') as tree_plot_file:
+                    # In later nodes can have fewer actions but want full table
+                    write_qs = []
+                    for a in range(7):
+                        try:
+                            write_qs.append(str(StartState.Qs[a]))
+                        except KeyError:
+                            write_qs.append('NA')
+                    
+                    tree_plot_file.write(f'D{StartState.depth}' + ',' + ','.join(write_qs)+'\n')
+            
+            # visualize convergence
+            if not os.path.exists('convergence_plot.png'):
+                start_node_Qs_DF = DataFrame(start_node_Qs)
+                sns.lineplot(data = start_node_Qs)
+                plt.legend(title = 'Move column')
+                plt.xlabel('MCTS iteration')
+                plt.ylabel(r'$\mathcal{Q}_(x, a)$')
+                plt.tight_layout()
+                plt.savefig(f'convergence_plot.png', dpi = 500)
+                plt.show()
+
         if StartState.reward is not None:
             return StartState.reward, StartState.board, SNmap
         else:
@@ -288,7 +304,7 @@ def MCTS(startB:ndarray, SNmap:defaultdict[str:McNode|None], c:float = 2**0.5, i
             return  StartState.children[best_action].reward, StartState.children[best_action].board, SNmap
             
 def game(start:ndarray, opponent:str, symbols:dict[int:str], PRINT:bool = False, 
-         iter_per_turn:int = 5000, random_enemy_search:bool = True):
+         iter_per_turn:int = 5000, random_enemy_search:bool = True, VISUALIZE:bool = False):
     # Tree dictionary from which we re-use previously seen nodes
     tree_dict : defaultdict[str: McNode | None] = defaultdict(lambda: None)
     winner = evaluate_board(start)
@@ -309,8 +325,8 @@ def game(start:ndarray, opponent:str, symbols:dict[int:str], PRINT:bool = False,
             turn = 1
         # AI agent turn
         if turn == 1:
-            winner, B, tree_dict = MCTS(B, tree_dict, 
-                                        iterations=iter_per_turn, random_opp=random_enemy_search)
+            winner, B, tree_dict = MCTS(B, tree_dict,iterations=iter_per_turn, 
+                                        random_opp=random_enemy_search, VISUALIZE=VISUALIZE)
         match opponent:
             case 'random':
                 if turn == 2: # random P2 turn
@@ -339,8 +355,8 @@ def game(start:ndarray, opponent:str, symbols:dict[int:str], PRINT:bool = False,
             case 'optimal':
                 if turn == 2:
                     # resulting child node becomes root node at next move
-                    winner, B, tree_dict = MCTS(B, tree_dict, 
-                                                iterations=iter_per_turn, random_opp=False) # optimal opponent 
+                    winner, B, tree_dict = MCTS(B, tree_dict,iterations=iter_per_turn, 
+                                                random_opp=False, VISUALIZE=VISUALIZE) # optimal opponent 
 
             case 'human':
                 if turn == 2: # human player turn
@@ -492,18 +508,11 @@ if __name__ == '__main__':
             raise ValueError('Choose between starting with "empty" board or "a3" board for assignment 3')
 
     # play game
-    w, winB, Tree = game(B, opponent=args.mode, symbols = d, PRINT=True, random_enemy_search= not args.minimax)
-
-    # investigate convergence
-    if args.convergence:
-        # Iterations per move
-        ipm = [5, 25, 50, 100, 200, 500, 1000]
-        investigate_convergence([zeroB, hardcodedB], d, 
-                                iterations_per_move=ipm,
-                                iterations_per_simulation=args.nsim)
+    w, winB, Tree = game(B, opponent=args.mode, symbols = d, PRINT=True, 
+                         random_enemy_search= not args.minimax,VISUALIZE = args.convergence)
 
     # SIMULATION
-    # elif args.mode in {'random', 'optimal'}:
-    #     results = parellel_simulate(B, args.mode, d, args.nsim, nominimax= not args.minimax)
+    if args.mode in {'random', 'optimal'} and not args.convergence:
+        results = parellel_simulate(B, args.mode, d, args.nsim, nominimax= not args.minimax)
         
-    #     print(f'Game Mode: {args.mode}  Starting Board: {args.board}   Simulations: {args.nsim}\nAI wins:{100*results[1]}% Enemy wins:{100*results[2]}% Draws: {100*results[0]}%')
+        print(f'Game Mode: {args.mode}  Starting Board: {args.board}   Simulations: {args.nsim}\nAI wins:{100*results[1]}% Enemy wins:{100*results[2]}% Draws: {100*results[0]}%')
