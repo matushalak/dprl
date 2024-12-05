@@ -139,8 +139,6 @@ class McNode():
 
 
 # this MCTS function does 2/3 of heavy lifting
-# XXX How many moves need to look ahead analysis
-# TODO: integrate random opponent (inefficient) option nicely
 def MCTS(startB:ndarray, SNmap:defaultdict[str:McNode|None], c:float = 2**0.5, iterations:float = 50,
          random_opp:bool = True) -> tuple[int, defaultdict]:
     '''
@@ -186,10 +184,17 @@ def MCTS(startB:ndarray, SNmap:defaultdict[str:McNode|None], c:float = 2**0.5, i
         # allows us to reuse previously built tree
         SNmap[sB] = StartState
 
+    # need to manually do 2 times, once for empty board and once for assignment board
+    if not os.path.exists('tree_plot.csv'):
+        with open(f'tree_plot.csv', 'w') as tree_plot_file:
+                moves = ','.join(list(map(str, range(7))))
+                # add header
+                tree_plot_file.write('Node-Depth'+','+moves+'\n')
+
     # in MCTS - AFTER Backpropagation: Always start again at root Node!
     for sim in range(int(iterations)): # 1000 iterations for each move
         # TODO:
-        StartState.Qs # save to txt
+        # StartState.Qs # save to txt
         # at what point does this stop increasing by a lot
         # sim by StartState Qs
 
@@ -257,6 +262,19 @@ def MCTS(startB:ndarray, SNmap:defaultdict[str:McNode|None], c:float = 2**0.5, i
                 Step.parent.Qs[Step.parent_move] += (r - Step.parent.Qs[Step.parent_move] # adjustment toward new reward
                                                         ) / Step.parent.visits[Step.parent_move] # diminishing updates over time
     else:
+        # breakpoint()
+        # TODO: save to csv / txt
+        with open(f'tree_plot.csv', 'a', newline='') as tree_plot_file:
+                # In later nodes can have fewer actions but want full table
+                write_qs = []
+                for a in range(7):
+                    try:
+                        write_qs.append(str(StartState.Qs[a]))
+                    except KeyError:
+                        write_qs.append('NA')
+                
+                tree_plot_file.write(f'D{StartState.depth}' + ',' + ','.join(write_qs)+'\n')
+        
         if StartState.reward is not None:
             return StartState.reward, StartState.board, SNmap
         else:
@@ -267,9 +285,6 @@ def MCTS(startB:ndarray, SNmap:defaultdict[str:McNode|None], c:float = 2**0.5, i
             # return best_action, SNmap
             
             # Return board corresponding to best action, tree map
-            # breakpoint()
-            # TODO: save to txt
-            print(StartState.Qs)
             return  StartState.children[best_action].reward, StartState.children[best_action].board, SNmap
             
 def game(start:ndarray, opponent:str, symbols:dict[int:str], PRINT:bool = False, 
@@ -300,6 +315,20 @@ def game(start:ndarray, opponent:str, symbols:dict[int:str], PRINT:bool = False,
             case 'random':
                 if turn == 2: # random P2 turn
                     rand_move = choice(tree_dict[sB].actions) # random action choice
+                    
+                    
+                    # for example game illustration
+                    with open(f'tree_plot.csv', 'a', newline='') as tree_plot_file:
+                        # In later nodes can have fewer actions but want full table
+                        write_qs = []
+                        for a in range(7):
+                            if a == rand_move:
+                                write_qs.append(str(1))
+                            else:
+                                write_qs.append('NA')        
+                        tree_plot_file.write(f'D{tree_dict[sB].depth}' + ',' + ','.join(write_qs)+'\n')
+                    
+                    
                     # still run MCTS, but dont'update board & winner based on optimal simulation, 
                     # just update the tree
                     # _, _, tree_dict = MCTS(B, tree_dict) 
@@ -474,7 +503,7 @@ if __name__ == '__main__':
                                 iterations_per_simulation=args.nsim)
 
     # SIMULATION
-    elif args.mode in {'random', 'optimal'}:
-        results = parellel_simulate(B, args.mode, d, args.nsim, nominimax= not args.minimax)
+    # elif args.mode in {'random', 'optimal'}:
+    #     results = parellel_simulate(B, args.mode, d, args.nsim, nominimax= not args.minimax)
         
-        print(f'Game Mode: {args.mode}  Starting Board: {args.board}   Simulations: {args.nsim}\nAI wins:{100*results[1]}% Enemy wins:{100*results[2]}% Draws: {100*results[0]}%')
+    #     print(f'Game Mode: {args.mode}  Starting Board: {args.board}   Simulations: {args.nsim}\nAI wins:{100*results[1]}% Enemy wins:{100*results[2]}% Draws: {100*results[0]}%')
