@@ -4,6 +4,7 @@
 Connect Four is a board-size
 6 x 7, representation B in R^{6 X 7}
 '''
+# TODO: perfect solver & scoring positions
 from numpy import ndarray, unique, fliplr, array, where, zeros, mean, argmax, argmin, log, flipud
 from numpy.random import randint, choice
 from string import ascii_letters as ascl
@@ -283,8 +284,15 @@ def MCTS(startB:ndarray, SNmap:defaultdict[str:McNode|None], c:float = 2**0.5, i
             # visualize convergence
             if not os.path.exists('convergence_plot.png'):
                 start_node_Qs_DF = DataFrame(start_node_Qs)
-                sns.lineplot(data = start_node_Qs)
-                plt.legend(title = 'Move column')
+                ax = sns.lineplot(data = start_node_Qs)
+                for i, line in enumerate(ax.lines):
+                    if i == 1:  
+                        line.set_linewidth(2.5)  # Increase thickness
+                    else:
+                        line.set_linewidth(1.0)  # Default thickness for other lines
+                        line.set_alpha(0.5)      # Make other lines slightly transparent
+
+                plt.legend(title = 'Move column', loc = 'lower right')
                 plt.xlabel('MCTS iteration')
                 plt.ylabel(r'$\mathcal{Q}_(x, a)$')
                 plt.tight_layout()
@@ -303,6 +311,7 @@ def MCTS(startB:ndarray, SNmap:defaultdict[str:McNode|None], c:float = 2**0.5, i
             # Return board corresponding to best action, tree map
             return  StartState.children[best_action].reward, StartState.children[best_action].board, SNmap
             
+
 def game(start:ndarray, opponent:str, symbols:dict[int:str], PRINT:bool = False, 
          iter_per_turn:int = 5000, random_enemy_search:bool = True, VISUALIZE:bool = False):
     # Tree dictionary from which we re-use previously seen nodes
@@ -325,6 +334,8 @@ def game(start:ndarray, opponent:str, symbols:dict[int:str], PRINT:bool = False,
             turn = 1
         # AI agent turn
         if turn == 1:
+            # option to start from scratch each turn
+            # tree_dict : defaultdict[str: McNode | None] = defaultdict(lambda: None) 
             winner, B, tree_dict = MCTS(B, tree_dict,iterations=iter_per_turn, 
                                         random_opp=random_enemy_search, VISUALIZE=VISUALIZE)
         match opponent:
@@ -475,9 +486,9 @@ def parse_args():
     parser.add_argument('-board', type = str, default='a3')
     parser.add_argument('-nsim', type = int, default=100)
     parser.add_argument('-minimax', type = bool, default=False)
-    # TODO:incorporate
-    parser.add_argument('-starting_player', type = str, default='random')
     parser.add_argument('-convergence', type = bool, default=False)
+    # TODO:incorporate
+    # parser.add_argument('-starting_player', type = str, default='random')
     return parser.parse_args()
 
 
