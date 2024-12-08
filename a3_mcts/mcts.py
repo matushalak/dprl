@@ -1,3 +1,4 @@
+# *Final Version, Ready For Submission*
 # @matushalak
 # Monte-Carlo Tree Search Connect Four Game
 '''
@@ -286,7 +287,7 @@ def MCTS(startB:ndarray, SNmap:defaultdict[str:McNode|None], c:float = 2**0.5, i
                 start_node_Qs_DF = DataFrame(start_node_Qs)
                 ax = sns.lineplot(data = start_node_Qs)
                 for i, line in enumerate(ax.lines):
-                    if i == 1:  
+                    if i == 0:  
                         line.set_linewidth(2.5)  # Increase thickness
                     else:
                         line.set_linewidth(1.0)  # Default thickness for other lines
@@ -343,17 +344,17 @@ def game(start:ndarray, opponent:str, symbols:dict[int:str], PRINT:bool = False,
                 if turn == 2: # random P2 turn
                     rand_move = choice(tree_dict[sB].actions) # random action choice
                     
-                    
-                    # for example game illustration
-                    with open(f'tree_plot.csv', 'a', newline='') as tree_plot_file:
-                        # In later nodes can have fewer actions but want full table
-                        write_qs = []
-                        for a in range(7):
-                            if a == rand_move:
-                                write_qs.append(str(1))
-                            else:
-                                write_qs.append('NA')        
-                        tree_plot_file.write(f'D{tree_dict[sB].depth}' + ',' + ','.join(write_qs)+'\n')
+                    if VISUALIZE:
+                        # for example game illustration
+                        with open(f'tree_plot.csv', 'a', newline='') as tree_plot_file:
+                            # In later nodes can have fewer actions but want full table
+                            write_qs = []
+                            for a in range(7):
+                                if a == rand_move:
+                                    write_qs.append(str(1))
+                                else:
+                                    write_qs.append('NA')        
+                            tree_plot_file.write(f'D{tree_dict[sB].depth}' + ',' + ','.join(write_qs)+'\n')
                     
                     
                     # still run MCTS, but dont'update board & winner based on optimal simulation, 
@@ -454,24 +455,37 @@ def investigate_convergence(boards:list[ndarray, ndarray], symb:dict,
                 data.append([ipm, group, mode_str, metric, value])  # Append a row of data
 
     # Create the DataFrame directly
-    DF_long = DataFrame(data, columns=["Iterations per Move", "Group", "Mode", "Metric", "Value"])
+    DF_long = DataFrame(data, columns=["Iterations per Move", "Starting Board", "Strategy", "Metric", "Value"])
     DF_long.to_csv(f'mcts_simulation{iterations_per_simulation}_data.csv')
     # Plotting example: Iterations per Move vs Value, grouped by Group and Mode
     test_data = DF_long[(DF_long["Metric"] == "win")]
+    test_data.loc[:,'Value'] *= 100
     
     print('Duration:', time.time() -start_time)
 
-    sns.lineplot(
+    ax = sns.lineplot(
         data=test_data,
         x="Iterations per Move",  # Former index
         y="Value",  # Values to plot
         hue="Group",  # EB or AB
         style="Mode",  # mini or random
         errorbar = 'sd',
-        markers = True,
-        dashes=False)
+        markers = True)
     
-    plt.title("Performance Metrics by Group and Mode")
+    # After plotting, get all the line objects
+    lines = ax.lines
+
+    # Loop through and adjust alpha for lines belonging to AB
+    for line in lines:
+        label = line.get_label()  # something like 'EB-minimax', 'AB-random', etc.
+        print(label)
+        if '4' in label or '6' in label:
+            line.set_alpha(0.65)
+
+    plt.xscale('log')
+    plt.ylabel(r'% of Games Won')
+    plt.xlabel('MCTS Iterations per Move')
+    # plt.title("Performance Metrics by Group and Mode")
     plt.tight_layout()
     plt.savefig(f'mcts_simulation{iterations_per_simulation}_data.png', dpi = 500)
     plt.show()
@@ -487,6 +501,7 @@ def parse_args():
     parser.add_argument('-nsim', type = int, default=100)
     parser.add_argument('-minimax', type = bool, default=False)
     parser.add_argument('-convergence', type = bool, default=False)
+    parser.add_argument('-WINconvergence', type = bool, default=False)
     # TODO:incorporate
     # parser.add_argument('-starting_player', type = str, default='random')
     return parser.parse_args()
@@ -507,6 +522,10 @@ if __name__ == '__main__':
                         [2, 2, 2, 1, 0, 1, 0],
                         [1, 1, 2, 1, 0, 2, 0]])
     
+    hardcodedB[(hardcodedB == 1) | (hardcodedB == 2)] = abs(hardcodedB[((hardcodedB == 1) | (hardcodedB == 2))] - 3)
+    # breakpoint()
+
+    # breakpoint()
     # for the real game
     zeroB = zeros((6,7), dtype=int) 
     # TODO: add option to pass in board-string and start from that position
@@ -521,9 +540,16 @@ if __name__ == '__main__':
     # play game
     w, winB, Tree = game(B, opponent=args.mode, symbols = d, PRINT=True, 
                          random_enemy_search= not args.minimax,VISUALIZE = args.convergence)
+    
+    if args.WINconvergence:
+        # Iterations per move
+        ipm = [5, 10, 25, 50, 100, 200, 500, 1000, 5000]
+        investigate_convergence([zeroB, hardcodedB], d, 
+                                iterations_per_move=ipm,
+                                iterations_per_simulation=args.nsim)
 
     # SIMULATION
-    if args.mode in {'random', 'optimal'} and not args.convergence:
+    if args.mode in {'random', 'optimal'} and not args.convergence and not args.WINconvergence:
         results = parellel_simulate(B, args.mode, d, args.nsim, nominimax= not args.minimax)
         
         print(f'Game Mode: {args.mode}  Starting Board: {args.board}   Simulations: {args.nsim}\nAI wins:{100*results[1]}% Enemy wins:{100*results[2]}% Draws: {100*results[0]}%')
