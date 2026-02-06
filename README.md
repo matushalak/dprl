@@ -6,3 +6,4 @@
 - Infinite-horizon MDP problem centered around balancing holding costs and order costs `a2_mdp`
 - Developing a Reinforcement Learning agent able to play Connect 4 using Monte-Carlo Tree Search `a3_mcts`
 - `bonus_bandits` contains benchmarking of multiple RL methods on a simple two-armed bandit problem
+- `\mas` subfolder contains assignments for Multi-Agent Systems course
